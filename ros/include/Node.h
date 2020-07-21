@@ -40,6 +40,7 @@
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <sensor_msgs/CameraInfo.h>
 
 #include "System.h"
@@ -64,6 +65,7 @@ class Node
     void PublishMapPoints (std::vector<ORB_SLAM2::MapPoint*> map_points);
     void PublishPositionAsTransform (cv::Mat position);
     void PublishPositionAsPoseStamped(cv::Mat position);
+    void PublishPositionAsPoseWithCovarianceStamped(cv::Mat position);
     void PublishRenderedImage (cv::Mat image);
     void ParamsChangedCallback(orb_slam2_ros::dynamic_reconfigureConfig &config, uint32_t level);
     bool SaveMapSrv (orb_slam2_ros::SaveMap::Request &req, orb_slam2_ros::SaveMap::Response &res);
@@ -77,6 +79,7 @@ class Node
     image_transport::Publisher rendered_image_publisher_;
     ros::Publisher map_points_publisher_;
     ros::Publisher pose_publisher_;
+    ros::Publisher pose_with_covariance_publisher_;
 
     ros::ServiceServer service_server_;
 
@@ -94,7 +97,16 @@ class Node
     bool publish_pointcloud_param_;
     bool publish_tf_param_;
     bool publish_pose_param_;
+    bool publish_pose_with_covariance_param_;
     int min_observations_per_point_;
+
+    //Pose covariance
+    _Float64 cov_x_param_;
+    _Float64 cov_y_param_;
+    _Float64 cov_z_param_;
+    _Float64 cov_rot_x_param_;
+    _Float64 cov_rot_y_param_;
+    _Float64 cov_rot_z_param_;
 };
 
 #endif //ORBSLAM2_ROS_NODE_H_

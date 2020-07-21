@@ -22,8 +22,16 @@ Node::~Node () {
 
 void Node::Init () {
   //static parameters
+  node_handle_.param<_Float64>(name_of_node_+ "/covariance_x", cov_x_param_, 0.5);
+  node_handle_.param<_Float64>(name_of_node_+ "/covariance_y", cov_y_param_, 0.5);
+  node_handle_.param<_Float64>(name_of_node_+ "/covariance_z", cov_z_param_, 0.5);
+  node_handle_.param<_Float64>(name_of_node_+ "/covariance_rotation_x", cov_rot_x_param_, 0.5);
+  node_handle_.param<_Float64>(name_of_node_+ "/covariance_rotation_y", cov_rot_y_param_, 0.5);
+  node_handle_.param<_Float64>(name_of_node_+ "/covariance_rotation_z", cov_rot_z_param_, 0.5);
+  
   node_handle_.param(name_of_node_+ "/publish_pointcloud", publish_pointcloud_param_, true);
   node_handle_.param(name_of_node_+ "/publish_pose", publish_pose_param_, true);
+  node_handle_.param(name_of_node_+ "/publish_pose_with_covariance", publish_pose_with_covariance_param_, true);
   node_handle_.param(name_of_node_+ "/publish_tf", publish_tf_param_, true);
   node_handle_.param<std::string>(name_of_node_+ "/pointcloud_frame_id", map_frame_id_param_, "map");
   node_handle_.param<std::string>(name_of_node_+ "/camera_frame_id", camera_frame_id_param_, "camera_link");
@@ -53,6 +61,11 @@ void Node::Init () {
   if (publish_pose_param_) {
     pose_publisher_ = node_handle_.advertise<geometry_msgs::PoseStamped> (name_of_node_+"/pose", 1);
   }
+
+  // Enable publishing camera's pose as PoseStamped message
+  if (publish_pose_with_covariance_param_) {
+    pose_with_covariance_publisher_ = node_handle_.advertise<geometry_msgs::PoseWithCovarianceStamped> (name_of_node_+"/pose_cov", 1);
+  } 
 }
 
 
@@ -64,6 +77,10 @@ void Node::Update () {
 
     if (publish_pose_param_) {
       PublishPositionAsPoseStamped (position);
+    }
+
+    if (publish_pose_with_covariance_param_) {
+      PublishPositionAsPoseWithCovarianceStamped (position);
     }
   }
 
@@ -98,6 +115,23 @@ void Node::PublishPositionAsPoseStamped (cv::Mat position) {
   pose_publisher_.publish(pose_msg);
 }
 
+void Node::PublishPositionAsPoseWithCovarianceStamped (cv::Mat position) {
+  tf::Transform grasp_tf = TransformFromMat (position);
+  tf::Stamped<tf::Pose> grasp_tf_pose(grasp_tf, current_frame_time_, map_frame_id_param_);
+  geometry_msgs::PoseStamped pose_msg;
+  tf::poseStampedTFToMsg (grasp_tf_pose, pose_msg);
+
+  geometry_msgs::PoseWithCovarianceStamped pose_cov_msg;
+  pose_cov_msg.header = pose_msg.header;
+  pose_cov_msg.pose.pose = pose_msg.pose;
+  pose_cov_msg.pose.covariance[0]   = cov_x_param_;
+  pose_cov_msg.pose.covariance[7]   = cov_y_param_;
+  pose_cov_msg.pose.covariance[14]  = cov_z_param_;
+  pose_cov_msg.pose.covariance[21]  = cov_rot_x_param_;
+  pose_cov_msg.pose.covariance[28]  = cov_rot_y_param_;
+  pose_cov_msg.pose.covariance[35]  = cov_rot_z_param_;
+  pose_with_covariance_publisher_.publish(pose_cov_msg);
+}
 
 void Node::PublishRenderedImage (cv::Mat image) {
   std_msgs::Header header;
