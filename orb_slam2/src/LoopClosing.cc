@@ -34,12 +34,53 @@
 
 namespace ORB_SLAM2
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+bool LoopClosing::SetConfigParam(ConfigParam* pParams)
+{
+    mpParams = pParams;
+    return true;
+}
+
+bool LoopClosing::GetMapUpdateFlagForTracking()
+{
+    unique_lock<mutex> lock(mMutexMapUpdateFlag);
+    return mbMapUpdateFlagForTracking;
+}
+
+void LoopClosing::SetMapUpdateFlagInTracking(bool bflag)
+{
+    unique_lock<mutex> lock(mMutexMapUpdateFlag);
+    mbMapUpdateFlagForTracking = bflag;
+}
+
+bool LoopClosing::GetMonoVIEnable(void)
+{
+    return mbMonoVIEnable;
+}
+
+void LoopClosing::SetMonoVIEnable(bool flag)
+{
+    mbMonoVIEnable = flag;
+}
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
+
 
 LoopClosing::LoopClosing(Map *pMap, KeyFrameDatabase *pDB, ORBVocabulary *pVoc, const bool bFixScale):
     mbResetRequested(false), mbFinishRequested(false), mbFinished(true), mpMap(pMap),
     mpKeyFrameDB(pDB), mpORBVocabulary(pVoc), mpMatchedKF(NULL), mLastLoopKFid(0), mbRunningGBA(false), mbFinishedGBA(true),
     mbStopGBA(false), mpThreadGBA(NULL), mbFixScale(bFixScale), mnFullBAIdx(false)
 {
+    mLoopCounter = 0;
+
+    //---------------------------------------------------------
+
     mnCovisibilityConsistencyTh = 3;
 }
 
@@ -66,10 +107,21 @@ void LoopClosing::Run()
             // Detect loop candidates and check covisibility consistency
             if(DetectLoop())
             {
+
+                //-------------------------------------------------------
+
                // Compute similarity transformation [sR|t]
                // In the stereo/RGBD case s=1
                if(ComputeSim3())
                {
+                   mLoopCounter ++;
+
+                   char str1[256];  sprintf(str1,"%lf", mpCurrentKF->mTimeStamp);
+                   std::cout << GREEN"Detect a loop closing and Correct the Loop, Loop number: "
+                             << mLoopCounter
+                             << ", timestamp = " << str1
+                             << RESET << std::endl;
+
                    // Perform loop fusion and pose graph optimization
                    CorrectLoop();
                }
@@ -564,7 +616,15 @@ void LoopClosing::CorrectLoop()
     }
 
     // Optimize graph
-    Optimizer::OptimizeEssentialGraph(mpMap, mpMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, mbFixScale);
+    if(mbMonoVIEnable && mpLocalMapper->GetFirstVINSInited())  // for MonoVI
+    {
+        if(mpParams->GetEstimateExtrinsicBetweenCameraAndIMU())
+            Optimizer::OptimizeEssentialGraphForMonoVI(mpMap, mpMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, mbFixScale, mpLocalMapper->GetVINSInitTbc());
+        else
+            Optimizer::OptimizeEssentialGraphForMonoVI(mpMap, mpMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, mbFixScale, mpParams->GetMatTbc());
+    }
+    else                // for Monocular, RGBD or Stereo
+        Optimizer::OptimizeEssentialGraph(mpMap, mpMatchedKF, mpCurrentKF, NonCorrectedSim3, CorrectedSim3, LoopConnections, mbFixScale);
 
     mpMap->InformNewBigChange();
 

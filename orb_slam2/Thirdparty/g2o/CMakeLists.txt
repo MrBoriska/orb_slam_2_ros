@@ -117,4 +117,11 @@ ${g2o_SOURCE_DIR}/g2o/stuff/os_specific.h
 ${g2o_SOURCE_DIR}/g2o/stuff/string_tools.cpp
 ${g2o_SOURCE_DIR}/g2o/stuff/property.cpp
 ${g2o_SOURCE_DIR}/g2o/stuff/property.h
+
+#added
+${g2o_SOURCE_DIR}/g2o/stuff/sparse_helper.cpp
+${g2o_SOURCE_DIR}/g2o/stuff/sparse_helper.h
+${g2o_SOURCE_DIR}/g2o/solvers/linear_solver_cholmod.h
+${g2o_SOURCE_DIR}/g2o/solvers/linear_solver_eigen.h
+${g2o_SOURCE_DIR}/g2o/solvers/linear_solver_dense.h       
 )

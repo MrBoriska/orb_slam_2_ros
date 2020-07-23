@@ -64,6 +64,9 @@ protected:
 
     Map* mpMap;
 
+    double mFrameTimeStamp;
+    double mInitedTimeStamp;
+
     std::mutex mMutex;
 };
 

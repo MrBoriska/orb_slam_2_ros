@@ -21,6 +21,13 @@
 #ifndef KEYFRAME_H
 #define KEYFRAME_H
 
+#include <stddef.h>
+#include <opencv2/core.hpp>
+#include <mutex>
+#include <map>
+#include <set>
+#include <vector>
+
 #include "MapPoint.h"
 #include "Thirdparty/DBoW2/DBoW2/BowVector.h"
 #include "Thirdparty/DBoW2/DBoW2/FeatureVector.h"
@@ -29,10 +36,9 @@
 #include "Frame.h"
 #include "KeyFrameDatabase.h"
 #include "BoostArchiver.h"
-
-#include <mutex>
-
-
+#include "../src/IMU/NavState.h"
+#include "../src/IMU/IMUPreintegrator.h"
+#include "../src/IMU/imudata.h"
 namespace ORB_SLAM2
 {
 
@@ -43,6 +49,87 @@ class KeyFrameDatabase;
 
 class KeyFrame
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    KeyFrame(Frame &F, Map* pMap, KeyFrameDatabase *pKFDB, std::vector<IMUData> vIMUData, KeyFrame* pLastKF=NULL);
+    void SetIMUData(std::vector<IMUData> vIMUData);
+    void SetPrevAndNextKeyFrame(KeyFrame* pPrevKF);
+
+    KeyFrame* GetPrevKeyFrame(void);
+    KeyFrame* GetNextKeyFrame(void);
+    void SetPrevKeyFrame(KeyFrame* pKF);
+    void SetNextKeyFrame(KeyFrame* pKF);
+
+    std::vector<IMUData> GetVectorIMUData(void);
+    void AppendIMUDataToFront(KeyFrame* pPrevKF);
+
+    /// 计算关键帧的预计分
+    void ComputePreInt(void);
+
+    const IMUPreintegrator & GetIMUPreInt(void);
+
+    /// use the computed camera pose to update the body pose
+    void UpdateNavStatePVRFromTcw(const cv::Mat &Tcw,const cv::Mat &Tbc);
+
+    /// use the imupreint result (body pose) to update the current keyframe pose
+    void UpdatePoseFromNS(const cv::Mat &Tbc);
+
+    /// 公式(33): 将imupreint积分得到的dR,dP,dV作用到NavState(IMU坐标系)
+    void UpdateNavState(const IMUPreintegrator& IMUPreInt, const Vector3d& gw);
+
+    void UpdateNavState(const IMUPreintegrator& IMUPreInt, const Vector3d& gw,
+                        const Vector3d& dbiasg, const Vector3d& dbiasa);
+
+    void SetNavState(const NavState& ns);
+    const NavState& GetNavState(void);
+    void SetNavStateVel(const Vector3d &vel);
+    void SetNavStatePos(const Vector3d &pos);
+    void SetNavStateRot(const Matrix3d &rot);
+    void SetNavStateRot(const Sophus::SO3 &rot);
+    void SetNavStateBiasGyr(const Vector3d &bg);
+    void SetNavStateBiasAcc(const Vector3d &ba);
+    void SetNavStateDeltaBg(const Vector3d &dbg);
+    void SetNavStateDeltaBa(const Vector3d &dba);
+
+    /// initial mNavState and Set bias as bias+delta_bias, and reset the delta_bias term
+    void SetInitialNavStateAndBias(const NavState& ns);
+
+    // Variables used by loop closing
+    NavState mNavStateGBA;       //mTcwGBA
+    NavState mNavStateBefGBA;    //mTcwBefGBA
+
+    bool GetMonoVIEnable(void);
+    void SetMonoVIEnable(bool flag=false);
+
+protected:
+
+    std::mutex mMutexPrevKF;
+    std::mutex mMutexNextKF;
+    KeyFrame* mpPrevKeyFrame;
+    KeyFrame* mpNextKeyFrame;
+
+    // P, V, R, bg, ba, delta_bg, delta_ba (delta_bx is for optimization update)
+    std::mutex mMutexNavState;
+    NavState mNavState;
+
+    // IMU Data from lask KeyFrame to this KeyFrame
+    std::mutex mMutexIMUData;
+    std::vector<IMUData> mvIMUData;
+    IMUPreintegrator mIMUPreInt;
+
+private:
+    bool mbMonoVIEnable;
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
+
 public:
     KeyFrame(Frame &F, Map* pMap, KeyFrameDatabase* pKFDB);
 
@@ -111,6 +198,11 @@ public:
 
     static bool weightComp( int a, int b){
         return a>b;
+    }
+
+    static bool pairWeightComp(const pair<int,KeyFrame*> &a, const pair<int,KeyFrame*> &b)
+    {
+        return a.first>b.first; // 降序
     }
 
     static bool lId(KeyFrame* pKF1, KeyFrame* pKF2){

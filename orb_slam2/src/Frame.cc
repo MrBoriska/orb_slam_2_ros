@@ -19,9 +19,24 @@
 */
 
 #include "Frame.h"
+
+#include <ext/alloc_traits.h>
+#include <ext/new_allocator.h>
+#include <limits.h>
+#include <math.h>
+#include <opencv2/calib3d.hpp>
+#include <thread>
+#include <algorithm>
+#include <memory>
+#include <utility>
+
 #include "Converter.h"
 #include "ORBmatcher.h"
 #include <thread>
+#include "System.h"
+
+#include "../src/IMU/imudata.h"
+#include "../src/IMU/IMUPreintegrator.h"
 
 namespace ORB_SLAM2
 {
@@ -31,6 +46,340 @@ bool Frame::mbInitialComputations=true;
 float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
 float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
 float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
+
+
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+
+Frame::Frame(const cv::Mat &imGray, const double &timeStamp, const std::vector<IMUData> &vimu,
+             ORBextractor *extractor, ORBVocabulary *voc, cv::Mat &K, cv::Mat &distCoef,
+             const float &bf, const float &thDepth, KeyFrame *pLastKF)
+    :mpORBvocabulary(voc),mpORBextractorLeft(extractor),mpORBextractorRight(static_cast<ORBextractor*>(NULL)),
+    mTimeStamp(timeStamp), mK(K.clone()),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth)
+
+{
+    // not KF
+    setCurFrameAsNormalFrame();
+
+    // Copy IMU data
+    mvIMUDataSinceLastFrame = vimu;
+
+    // Frame ID
+    mnId=nNextId++;
+
+    // Scale Level Info
+    mnScaleLevels = mpORBextractorLeft->GetLevels();
+    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
+    mfLogScaleFactor = log(mfScaleFactor);
+    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
+    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
+    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
+    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
+
+    // ORB extraction
+    Timer orb_extract_timer; /// 14-17ms
+    ExtractORB(0,imGray);
+    mTimeOfORBExtract = orb_extract_timer.runTime_ms();
+//    std::cout << "[INFO]    ORB extraction is time: " << mTimeOfORBExtract << " ms" << RESET << std::endl;
+
+    N = mvKeys.size();
+
+    if(mvKeys.empty())
+        return;
+
+    UndistortKeyPoints();
+
+    // Set no stereo information
+    mvuRight = vector<float>(N,-1);
+    mvDepth = vector<float>(N,-1);
+
+    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+    mvbOutlier = vector<bool>(N,false);
+
+    // This is done only for the first Frame (or after a change in the calibration)
+    if(mbInitialComputations)
+    {
+        ComputeImageBounds(imGray);
+
+        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
+        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
+
+        fx = K.at<float>(0,0);
+        fy = K.at<float>(1,1);
+        cx = K.at<float>(0,2);
+        cy = K.at<float>(1,2);
+        invfx = 1.0f/fx;
+        invfy = 1.0f/fy;
+
+        mbInitialComputations=false;
+    }
+
+    mb = mbf/fx;
+
+    AssignFeaturesToGrid();
+
+}
+
+///// 计算LastFrame到CurrFrame之间的IMU的积分,结果保存在imupreint
+//void Frame::ComputeIMUPreIntSinceLastFrame(const Frame* pLastF, IMUPreintegrator& IMUPreInt) const
+//{
+//    // Reset pre-integrator first
+//    IMUPreInt.reset();
+
+//    const std::vector<IMUData>& vIMUSInceLastFrame = mvIMUDataSinceLastFrame;
+
+//    Vector3d bg = pLastF->GetNavState().Get_BiasGyr();  // 获取lastF的biasg
+//    Vector3d ba = pLastF->GetNavState().Get_BiasAcc();  // 获取lastF的biasa
+
+//    // remember to consider the gap between the last KF and the first IMU
+//    {
+//        const IMUData& imu = vIMUSInceLastFrame.front();
+//        double dt = imu._t - pLastF->mTimeStamp;
+//        // IMUPreInt.update的输入已经减去 bias
+//        IMUPreInt.update(imu._g - bg, imu._a - ba, dt);
+
+//        // Test log
+//        if(dt < 0)
+//        {
+//            cerr<<std::fixed<<std::setprecision(3)<<"dt = "<<dt<<", this frame vs last imu time: "<<pLastF->mTimeStamp<<" vs "<<imu._t<<endl;
+//            std::cerr.unsetf ( std::ios::showbase );                // deactivate showbase
+//        }
+//    }
+//    // integrate each imu
+//    for(size_t i=0; i<vIMUSInceLastFrame.size(); i++)
+//    {
+//        const IMUData& imu = vIMUSInceLastFrame[i];
+//        double nextt;
+//        if(i==vIMUSInceLastFrame.size()-1)
+//            nextt = mTimeStamp;         // last IMU, next is this KeyFrame
+//        else
+//            nextt = vIMUSInceLastFrame[i+1]._t;  // regular condition, next is imu data
+
+//        // delta time
+//        double dt = nextt - imu._t;
+//        // update pre-integrator
+//        IMUPreInt.update(imu._g - bg, imu._a - ba, dt);
+
+//        // Test log
+//        if(dt <= 0)
+//        {
+//            cerr<<std::fixed<<std::setprecision(3)<<"dt = "<<dt<<", this vs next time: "<<imu._t<<" vs "<<nextt<<endl;
+//            std::cerr.unsetf ( std::ios::showbase );                // deactivate showbase
+//        }
+//    }
+//}
+
+/// 计算LastFrame到CurrFrame之间的IMU的积分,结果保存在imupreint
+void Frame::ComputeIMUPreIntSinceLastFrame(const Frame* pLastF, IMUPreintegrator& IMUPreInt) const
+{
+    if(mvIMUDataSinceLastFrame.empty())
+    {
+        std::cerr << "ERROR: The imu data between current frame and last frame is empty, this shouldn't happen !" << std::endl;
+        return;
+    }
+
+    // Reset pre-integrator first
+    IMUPreInt.reset();
+
+    const std::vector<IMUData>& vIMUDataSinceLastFrame = mvIMUDataSinceLastFrame;
+
+    // get the biasg and biasa updated from last frame
+    Vector3d bg = pLastF->GetNavState().Get_BiasGyr();      // get the biasg of LastFrame
+    Vector3d ba = pLastF->GetNavState().Get_BiasAcc();      // get the biasa of LastFrame
+
+    // remember to consider the gap between the last frame and the first IMU
+    {
+        const IMUData& imu = vIMUDataSinceLastFrame.front();
+        double dt = imu._t - pLastF->mTimeStamp;
+        // The input of IMUPreInt.update should be the real gyro and acc of IMU
+        IMUPreInt.update(imu._g-bg, imu._a-ba, dt);
+
+        // Test log
+        if(dt < 0)
+        {
+            cerr<<std::fixed<<std::setprecision(3)<<"dt = "<<dt<<", this frame vs the first imu time: "<<pLastF->mTimeStamp<<" vs "<<imu._t<<endl;
+            cerr<<std::fixed<<std::setprecision(3)<<"Suggestion: check the time delay setting between image and imu, may be it is too large." << endl;
+            std::cerr.unsetf ( std::ios::showbase );                // deactivate showbase
+        }
+    }
+
+    // integrate each imu
+    for(size_t i=0, iend=vIMUDataSinceLastFrame.size(); i<iend; i++ )
+    {
+        const IMUData& imu = vIMUDataSinceLastFrame[i];
+        double nextt;
+        if(i==iend-1)
+            nextt = mTimeStamp;                         // last IMU, next is this frame
+        else
+            nextt = vIMUDataSinceLastFrame[i+1]._t;     // regular condition, next is imu data
+
+        // delta time
+        double dt = nextt - imu._t;
+        // update the pre-integrator
+        IMUPreInt.update(imu._g-bg, imu._a-ba, dt);
+
+        // Test log
+        if(dt < 0)
+        {
+            cerr<<std::fixed<<std::setprecision(3)<<"dt = "<<dt<<", this vs next imu time: "<<imu._t<<" vs "<<nextt<<endl;
+            cerr<<std::fixed<<std::setprecision(3)<<"Suggestion: check the time delay setting between image and imu, may be it is too large." << endl;
+            std::cerr.unsetf ( std::ios::showbase );                // deactivate showbase
+        }
+    }
+
+}
+
+/// 计算LastKeyFrame到CurrFrame之间的IMU的积分,结果保存在imupreint. --- 需额外输入IMUData
+void Frame::ComputeIMUPreIntSinceLastKF(KeyFrame* pLastKF,IMUPreintegrator& IMUPreInt, const std::vector<IMUData>& vIMUSInceLastKF) const
+{
+    if(vIMUSInceLastKF.empty())
+    {
+        std::cerr << "ERROR: The imu data between current frame and last keyframe is empty, this shouldn't happen !" << std::endl;
+        return;
+    }
+
+    // Reset pre-integrator first
+    IMUPreInt.reset();
+
+    const std::vector<IMUData>& vIMUDataSinceLastKF = vIMUSInceLastKF;
+
+    // get the biasg and biasa updated from last frame
+    Vector3d bg = pLastKF->GetNavState().Get_BiasGyr();     // get the biasg of Last KeyFrame
+    Vector3d ba = pLastKF->GetNavState().Get_BiasAcc();     // get the biasa of Last KeyFrame
+
+    // remember to consider the gap between the pLastKF and the first IMU
+    {
+        const IMUData& imu = vIMUDataSinceLastKF.front();
+        double dt = imu._t - pLastKF->mTimeStamp;
+        // The input of IMUPreInt.update should be the real gyro and acc of IMU
+        IMUPreInt.update(imu._g-bg, imu._a-ba, dt);
+        // Test log
+        if(dt < 0)
+        {
+            cerr<<std::fixed<<std::setprecision(3)<<"dt = "<<dt<<", pLastKF vs the first imu time: "<<pLastKF->mTimeStamp<<" vs "<<imu._t<<endl;
+            cerr<<"Suggestion: check the time delay setting between image and imu, may be it is too large." << endl;
+            std::cerr.unsetf ( std::ios::showbase );                // deactivate showbase
+        }
+    }
+
+    // integrate each imu
+    for(size_t i=0, iend=vIMUDataSinceLastKF.size(); i<iend; i++)
+    {
+        const IMUData& imu = vIMUDataSinceLastKF[i];
+        double nextt;
+        if(i==iend-1)
+            nextt = mTimeStamp;                     // last IMU, next is this frame
+        else
+            nextt = vIMUDataSinceLastKF[i+1]._t;    // regular condition, next is imu data
+
+        // delta time
+        double dt = nextt - imu._t;
+        // update the pre-integrator
+        IMUPreInt.update(imu._g-bg, imu._a-ba, dt);
+
+        // Test log
+        if(dt < 0)
+        {
+            cerr<<std::fixed<<std::setprecision(3)<<"dt = "<<dt<<", this vs next time: "<<imu._t<<" vs "<<nextt<<endl;
+            cerr<<"Suggestion: check the time delay setting between image and imu, may be it is too large." << endl;
+            std::cerr.unsetf ( std::ios::showbase );                // deactivate showbase
+        }
+    }
+
+}
+
+/// use the computed camera pose to update the body pose
+void Frame::UpdateNavStatePVRFromTcw(const cv::Mat &Tcw,const cv::Mat &Tbc)
+{
+//    unique_lock<mutex> lock(mMutexNavState);
+    cv::Mat Twb = Converter::toCvMatInverse(Tbc*Tcw);
+    Matrix3d Rwb = Converter::toMatrix3d(Twb.rowRange(0,3).colRange(0,3));
+    Vector3d Pwb = Converter::toVector3d(Twb.rowRange(0,3).col(3));
+
+    Matrix3d Rw1 = mNavState.Get_RotMatrix();
+    Vector3d Vw1 = mNavState.Get_V();
+    Vector3d Vw2 = Rwb*Rw1.transpose()*Vw1;     // bV1 = bV2 ==> Rwb1^T*wV1 = Rwb2^T*wV2 ==> wV2 = Rwb2*Rwb1^T*wV1
+
+    mNavState.Set_Pos(Pwb);
+    mNavState.Set_Vel(Vw2);
+    mNavState.Set_Rot(Rwb);
+}
+
+/// 通过body的pose与Tbc计算相机的姿态mTcw
+void Frame::UpdatePoseFromNS(const cv::Mat &Tbc)
+{
+    // 相机到body的旋转与平移
+    cv::Mat Rbc = Tbc.rowRange(0,3).colRange(0,3).clone();
+    cv::Mat Pbc = Tbc.rowRange(0,3).col(3).clone();
+
+    // body到world的旋转与平移
+    cv::Mat Rwb = Converter::toCvMat(mNavState.Get_RotMatrix());
+    cv::Mat Pwb = Converter::toCvMat(mNavState.Get_P());
+
+    // world到camera的旋转与平移
+    cv::Mat Rcw = (Rwb*Rbc).t();
+    cv::Mat Pwc = Rwb*Pbc + Pwb;
+    cv::Mat Pcw = -Rcw*Pwc;
+
+    cv::Mat Tcw = cv::Mat::eye(4,4,CV_32F);
+    Rcw.copyTo(Tcw.rowRange(0,3).colRange(0,3));
+    Pcw.copyTo(Tcw.rowRange(0,3).col(3));
+
+    SetPose(Tcw);
+}
+
+/// 将预积分的结果作用到body,结果保存在mNavState上
+void Frame::UpdateNavState(const IMUPreintegrator &IMUPreInt, const Vector3d &gw)
+{
+    Converter::updateNS(mNavState, IMUPreInt, gw);
+}
+
+/// consider the dbiasg and dbiasa
+void Frame::UpdateNavState(const IMUPreintegrator &IMUPreInt, const Vector3d &gw,
+                           const Vector3d& dbiasg, const Vector3d& dbiasa)
+{
+    Converter::updateNS(mNavState, IMUPreInt, gw, dbiasg, dbiasa);
+}
+
+
+/// 获取当前的mNavState,即获取body的姿态
+const NavState& Frame::GetNavState(void) const
+{
+    return mNavState;
+}
+
+/// use a exiting NavState to initial mNavState
+void Frame::SetInitialNavStateAndBias(const NavState& ns)
+{
+    mNavState = ns;
+    // Set bias as bias+delta_bias, and reset the delta_bias term
+    mNavState.Set_BiasGyr(ns.Get_BiasGyr()+ns.Get_dBias_Gyr());
+    mNavState.Set_BiasAcc(ns.Get_BiasAcc()+ns.Get_dBias_Acc());
+    mNavState.Set_DeltaBiasGyr(Vector3d::Zero());
+    mNavState.Set_DeltaBiasAcc(Vector3d::Zero());
+}
+
+
+void Frame::SetNavStateBiasGyr(const Vector3d &bg)
+{
+    mNavState.Set_BiasGyr(bg);
+}
+
+void Frame::SetNavStateBiasAcc(const Vector3d &ba)
+{
+    mNavState.Set_BiasAcc(ba);
+}
+
+void Frame::SetNavState(const NavState& ns)
+{
+    mNavState = ns;
+}
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 
 Frame::Frame()
 {}
@@ -55,6 +404,12 @@ Frame::Frame(const Frame &frame)
 
     if(!frame.mTcw.empty())
         SetPose(frame.mTcw);
+
+    //////////////////////
+    mvIMUDataSinceLastFrame = frame.mvIMUDataSinceLastFrame;
+    mNavState = frame.GetNavState();
+    mMargCovInv = frame.mMargCovInv;
+    mNavStatePrior = frame.mNavStatePrior;
 }
 
 
@@ -170,7 +525,7 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const double &timeSt
     AssignFeaturesToGrid();
 }
 
-
+// for Monocular
 Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth)
     :mpORBvocabulary(voc),mpORBextractorLeft(extractor),mpORBextractorRight(static_cast<ORBextractor*>(NULL)),
      mTimeStamp(timeStamp), mK(K.clone()),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth)

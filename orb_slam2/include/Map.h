@@ -27,6 +27,7 @@
 
 #include <set>
 #include <mutex>
+#include <vector>
 
 
 
@@ -36,8 +37,34 @@ namespace ORB_SLAM2
 class MapPoint;
 class KeyFrame;
 
+class KFIdComapre
+{
+public:
+    bool operator()(const KeyFrame* kfleft,const KeyFrame* kfright) const;
+};
+
+
 class Map
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+public:
+    // Update after an absolute scale is available
+    void UpdateScale(const double &scale);      // 当scale被恢复后,要更新map的尺度
+
+public:
+    std::mutex mMutexMapUpdate;
+
+protected:
+    // In VI-ORB_SLAM mode, the keyframe should be order by mnId
+    std::set<KeyFrame*,KFIdComapre> mspKeyFrames;   /// KeyFrames
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 public:
     Map();
 
@@ -62,16 +89,14 @@ public:
 
     vector<KeyFrame*> mvpKeyFrameOrigins;
 
-    std::mutex mMutexMapUpdate;
-
     // This avoid that two points are created simultaneously in separate threads (id conflict)
     std::mutex mMutexPointCreation;
 
 protected:
     std::set<MapPoint*> mspMapPoints;
-    std::set<KeyFrame*> mspKeyFrames;
 
     std::vector<MapPoint*> mvpReferenceMapPoints;
+
 
     long unsigned int mnMaxKFid;
 

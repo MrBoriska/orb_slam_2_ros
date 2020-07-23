@@ -21,8 +21,148 @@
 
 #include "Converter.h"
 
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+#include <algorithm>
+
 namespace ORB_SLAM2
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+
+/**
+ * @brief 将imupreint积分得到的dR,dP,dV作用到NavState(IMU坐标系)
+ * 公式(33)
+ */
+//void Converter::updateNS(NavState& ns, const IMUPreintegrator& imupreint, const Vector3d& gw)
+//{
+//    Matrix3d dR = imupreint.getDeltaR();
+//    Vector3d dP = imupreint.getDeltaP();
+//    Vector3d dV = imupreint.getDeltaV();
+//    double dt = imupreint.getDeltaTime();
+
+//    Vector3d Pwbpre = ns.Get_P();
+//    Matrix3d Rwbpre = ns.Get_RotMatrix();
+//    Vector3d Vwbpre = ns.Get_V();
+
+//    Matrix3d Rwb = Rwbpre * dR;
+//    Vector3d Pwb = Pwbpre + Vwbpre*dt + 0.5*gw*dt*dt + Rwbpre*dP;
+//    Vector3d Vwb = Vwbpre + gw*dt + Rwbpre*dV;
+
+//    // Here assume that the pre-integration is re-computed after bias updated, so the bias term is ignored
+//    ns.Set_Pos(Pwb);
+//    ns.Set_Vel(Vwb);
+//    ns.Set_Rot(Rwb);
+
+//    // Test log
+//    if(ns.Get_dBias_Gyr().norm()>1e-6 || ns.Get_dBias_Acc().norm()>1e-6) std::cerr<<"delta bias in updateNS is not zero"<<ns.Get_dBias_Gyr().transpose()<<", "<<ns.Get_dBias_Acc().transpose()<<std::endl;
+//}
+
+void Converter::updateNS(NavState& ns, const IMUPreintegrator& imupreint, const Vector3d& gw)
+{
+    Matrix3d dR = imupreint.getDeltaR();
+    Vector3d dP = imupreint.getDeltaP();
+    Vector3d dV = imupreint.getDeltaV();
+    double dt = imupreint.getDeltaTime();
+
+    Vector3d Pwbpre = ns.Get_P();
+    Matrix3d Rwbpre = ns.Get_RotMatrix();
+    Vector3d Vwbpre = ns.Get_V();
+
+    Matrix3d Rwb = Rwbpre * dR;
+    Vector3d Pwb = Pwbpre + Vwbpre*dt + 0.5*gw*dt*dt + Rwbpre*dP;
+    Vector3d Vwb = Vwbpre + gw*dt + Rwbpre*dV;
+
+    // Here assume that the pre-integration is re-computed after bias updated, so the bias term is ignored
+    ns.Set_Pos(Pwb);
+    ns.Set_Vel(Vwb);
+    ns.Set_Rot(Rwb);
+
+    // Test log
+    if(ns.Get_dBias_Gyr().norm()>1e-6 || ns.Get_dBias_Acc().norm()>1e-6) std::cerr<<"delta bias in updateNS is not zero"<<ns.Get_dBias_Gyr().transpose()<<", "<<ns.Get_dBias_Acc().transpose()<<std::endl;
+}
+
+void Converter::updateNS(NavState& ns, const IMUPreintegrator& imupreint, const Vector3d& gw,
+                         const Eigen::Vector3d& dbiasg, const Eigen::Vector3d& dbiasa)
+{
+    Matrix3d dR = imupreint.getDeltaR();
+    Vector3d dP = imupreint.getDeltaP();
+    Vector3d dV = imupreint.getDeltaV();
+    double dt = imupreint.getDeltaTime();
+
+    Vector3d Pwbpre = ns.Get_P();
+    Matrix3d Rwbpre = ns.Get_RotMatrix();
+    Vector3d Vwbpre = ns.Get_V();
+
+    Matrix3d Rwb = Rwbpre * dR;
+    Vector3d Pwb = Pwbpre + Vwbpre*dt + 0.5*gw*dt*dt + Rwbpre*dP;
+    Vector3d Vwb = Vwbpre + gw*dt + Rwbpre*dV;
+
+//    // Here assume that the pre-integration is re-computed after bias updated, so the bias term is ignored
+//    ns.Set_Pos(Pwb);
+//    ns.Set_Vel(Vwb);
+//    ns.Set_Rot(Rwb);
+
+
+    // Here we consider the bias updated
+    Rwb *= imupreint.Expmap(imupreint.getJRBiasg()*dbiasg);
+    Vwb += imupreint.getJVBiasg()*dbiasg + imupreint.getJVBiasa()*dbiasa;
+    Pwb += imupreint.getJPBiasg()*dbiasg + imupreint.getJPBiasa()*dbiasa;
+
+    ns.Set_Pos(Pwb);
+    ns.Set_Vel(Vwb);
+    ns.Set_Rot(Rwb);
+
+    // Test log
+    if(ns.Get_dBias_Gyr().norm()>1e-6 || ns.Get_dBias_Acc().norm()>1e-6) std::cerr<<"delta bias in updateNS is not zero"<<ns.Get_dBias_Gyr().transpose()<<", "<<ns.Get_dBias_Acc().transpose()<<std::endl;
+}
+
+cv::Mat Converter::toCvMatInverse(const cv::Mat &Tcw)
+{
+    cv::Mat Rcw = Tcw.rowRange(0,3).colRange(0,3);
+    cv::Mat tcw = Tcw.rowRange(0,3).col(3);
+    cv::Mat Rwc = Rcw.t();
+    cv::Mat twc = -Rwc*tcw;
+
+    cv::Mat Twc = cv::Mat::eye(4,4,Tcw.type());
+    Rwc.copyTo(Twc.rowRange(0,3).colRange(0,3));
+    twc.copyTo(Twc.rowRange(0,3).col(3));
+
+    return Twc.clone();
+}
+
+// part_index: 0, 1, ,,, total_parts-1
+std::vector<cv::Mat> Converter::toDescriptorVector(const cv::Mat &Descriptors, int total_parts, int part_index)
+{
+//    std::vector<cv::Mat> vDesc;
+//    vDesc.reserve(Descriptors.rows);
+//    for (int j=0;j<Descriptors.rows;j++)
+//        vDesc.push_back(Descriptors.row(j));
+
+//    return vDesc;
+
+    std::vector<cv::Mat> vDesc;
+    int i_start, i_end;
+    i_start = Descriptors.rows / total_parts * part_index;
+    if(part_index == total_parts-1)
+        i_end = Descriptors.rows-1;
+    else
+        i_end = Descriptors.rows / total_parts * (part_index+1) - 1;
+
+
+    vDesc.reserve(i_end-i_start+1);
+    for(int j=i_start; j<=i_end; j++)
+        vDesc.push_back(Descriptors.row(j));
+
+    return vDesc;
+
+}
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 
 std::vector<cv::Mat> Converter::toDescriptorVector(const cv::Mat &Descriptors)
 {
@@ -33,6 +173,7 @@ std::vector<cv::Mat> Converter::toDescriptorVector(const cv::Mat &Descriptors)
 
     return vDesc;
 }
+
 
 g2o::SE3Quat Converter::toSE3Quat(const cv::Mat &cvT)
 {
@@ -107,6 +248,48 @@ cv::Mat Converter::toCvSE3(const Eigen::Matrix<double,3,3> &R, const Eigen::Matr
     return cvMat.clone();
 }
 
+Eigen::Matrix4d Converter::toMatrix4d(const cv::Mat &cvMat4)
+{
+    Eigen::Matrix<double,3,3> R;
+    R <<    cvMat4.at<float>(0,0), cvMat4.at<float>(0,1), cvMat4.at<float>(0,2),
+            cvMat4.at<float>(1,0), cvMat4.at<float>(1,1), cvMat4.at<float>(1,2),
+            cvMat4.at<float>(2,0), cvMat4.at<float>(2,1), cvMat4.at<float>(2,2);
+
+    Eigen::Matrix<double,3,1> t( cvMat4.at<float>(0,3), cvMat4.at<float>(1,3), cvMat4.at<float>(2,3) );
+    Eigen::Matrix4d EigTbc = Eigen::Matrix4d::Identity();
+    EigTbc.block<3,3>(0,0) = R;
+    EigTbc.block<3,1>(0,3) = t;
+
+    return EigTbc;
+}
+
+cv::Mat Converter::toSkew(const Eigen::Vector3d v)
+{
+//    cv::Mat Omega = cv::Mat::zeros(3,3,CV_32F);
+//    Omega.at<float>(0,1) = -v(2);
+//    Omega.at<float>(0,2) = v(1);
+//    Omega.at<float>(1,2) = -v(0);
+//    Omega.at<float>(1,0) = v(2);
+//    Omega.at<float>(2,0) = -v(1);
+//    Omega.at<float>(2,1) = v(0);
+
+//    return Omega;
+
+    return (cv::Mat_<float>(3,3) <<
+            0,  -v(2),  v(1),
+            v(2),   0,  -v(0),
+            -v(1),  v(0),   0
+            );
+}
+
+cv::Mat Converter::toSkew(const cv::Mat &v)
+{
+    return (cv::Mat_<float>(3,3) <<             0, -v.at<float>(2), v.at<float>(1),
+            v.at<float>(2),               0,-v.at<float>(0),
+            -v.at<float>(1),  v.at<float>(0),              0);
+}
+
+
 Eigen::Matrix<double,3,1> Converter::toVector3d(const cv::Mat &cvVector)
 {
     Eigen::Matrix<double,3,1> v;
@@ -147,5 +330,16 @@ std::vector<float> Converter::toQuaternion(const cv::Mat &M)
 
     return v;
 }
+Eigen::Vector3d Converter::toEulerAngles(const cv::Mat &cvMat3)
+{
+    Eigen::Matrix<double,3,3> eigMat = toMatrix3d(cvMat3);
+    Eigen::Matrix3d rotation_matrix(eigMat);
+    Eigen::Vector3d euler = rotation_matrix.eulerAngles(2, 1, 0);
+
+    return euler;
+}
+
+
+
 
 } //namespace ORB_SLAM

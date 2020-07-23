@@ -33,6 +33,7 @@ FrameDrawer::FrameDrawer(Map* pMap):mpMap(pMap)
 {
     mState=Tracking::SYSTEM_NOT_READY;
     mIm = cv::Mat(480,640,CV_8UC3, cv::Scalar(0,0,0));
+    mInitedTimeStamp = -1.0;
 }
 
 cv::Mat FrameDrawer::DrawFrame()
@@ -144,6 +145,11 @@ void FrameDrawer::DrawTextInfo(cv::Mat &im, int nState, cv::Mat &imText)
         s << "KFs: " << nKFs << ", MPs: " << nMPs << ", Matches: " << mnTracked;
         if(mnTrackedVO>0)
             s << ", + VO matches: " << mnTrackedVO;
+
+        if(mInitedTimeStamp > 0)
+        {
+            s << ", Time: " << mFrameTimeStamp - mInitedTimeStamp;
+        }
     }
     else if(nState==Tracking::LOST)
     {
@@ -168,20 +174,26 @@ void FrameDrawer::Update(Tracking *pTracker)
 {
     unique_lock<mutex> lock(mMutex);
     pTracker->mImGray.copyTo(mIm);
-    mvCurrentKeys=pTracker->mCurrentFrame.mvKeys;
+    mvCurrentKeys=pTracker->mCurrentFrame.mvKeys;   // ORB features of currentFrame
+    mFrameTimeStamp=pTracker->mCurrentFrame.mTimeStamp;
     N = mvCurrentKeys.size();
     mvbVO = vector<bool>(N,false);
     mvbMap = vector<bool>(N,false);
-    mbOnlyTracking = pTracker->mbOnlyTracking;
+    mbOnlyTracking = pTracker->mbOnlyTracking;      // default: false
 
 
     if(pTracker->mLastProcessedState==Tracking::NOT_INITIALIZED)
     {
         mvIniKeys=pTracker->mInitialFrame.mvKeys;
         mvIniMatches=pTracker->mvIniMatches;
+
+        mInitedTimeStamp = -1.0;
     }
     else if(pTracker->mLastProcessedState==Tracking::OK)
     {
+        if(mInitedTimeStamp<0)
+            mInitedTimeStamp = mFrameTimeStamp;
+
         for(int i=0;i<N;i++)
         {
             MapPoint* pMP = pTracker->mCurrentFrame.mvpMapPoints[i];

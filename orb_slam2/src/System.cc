@@ -25,14 +25,280 @@
 #include <thread>
 #include <iomanip>
 
+///////////////////////////
+#include "Tracking.h"
+#include "FrameDrawer.h"
+//#include "Map.h"
+#include "LocalMapping.h"
+#include "LoopClosing.h"
+#include "KeyFrameDatabase.h"
+
+#include "../src/IMU/configparam.h"
+
+bool has_suffix(const std::string &str, const std::string &suffix) {
+  std::size_t index = str.find(suffix, str.size() - suffix.size());
+  return (index != std::string::npos);
+}
+
 namespace ORB_SLAM2
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+bool System::bLocalMapAcceptKF()
+{
+    return (mpLocalMapper->AcceptKeyFrames() && !mpLocalMapper->isStopped());
+    //return mpLocalMapper->ForsyncCheckNewKeyFrames();
+}
+
+bool System::bLocalMapperCreateNewMapPointsFinished()
+{
+    return ( mpLocalMapper->bCreateNewMapPointsFinished && !mpLocalMapper->isStopped() );
+}
+
+bool System::SetConfigParam(ConfigParam* pParams)
+{
+    mpParams = pParams;
+    if (mpTracker->SetConfigParam(mpParams))
+        std::cout << GREEN"SetConfigParam for Tracker" << RESET << std::endl;
+    if (mpLocalMapper->SetConfigParam(mpParams))
+        std::cout << GREEN"SetConfigParam for LocalMapper"<< RESET  << std::endl;
+    if (mpLoopCloser->SetConfigParam(mpParams))
+        std::cout << GREEN"SetConfigParam for LoopCloser"<< RESET  << std::endl;
+
+    return true;
+}
+
+cv::Mat System::TrackMonoVI(const cv::Mat &im, const std::vector<IMUData> &vimu, const double &timestamp)
+{
+    if(mSensor!=MONOCULAR)
+    {
+        cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular." << endl;
+        exit(-1);
+    }
+
+    // Check mode change
+    {
+        unique_lock<mutex> lock(mMutexMode);
+        if(mbActivateLocalizationMode)
+        {
+            mpLocalMapper->RequestStop();
+
+            // Wait until Local Mapping has effectively stopped
+            while(!mpLocalMapper->isStopped())
+            {
+                usleep(1000);
+            }
+
+            mpTracker->InformOnlyTracking(true);
+            mbActivateLocalizationMode = false;
+        }
+        if(mbDeactivateLocalizationMode)
+        {
+            mpTracker->InformOnlyTracking(false);
+            mpLocalMapper->Release();
+            mbDeactivateLocalizationMode = false;
+        }
+    }
+
+    // Check reset
+    {
+    unique_lock<mutex> lock(mMutexReset);
+    if(mbReset)
+    {
+        mpTracker->Reset();
+        mbReset = false;
+    }
+    }
+
+    cv::Mat Tcw;
+    if( mbMonoVIEnable )
+        Tcw = mpTracker->GrabImageMonoVI(im, vimu, timestamp-mpParams->GetImageDelayToIMU());  // for MonoVI
+    else
+        Tcw = mpTracker->GrabImageMonocular(im,timestamp);      // for Monocular
+
+
+    unique_lock<mutex> lock2(mMutexState);
+    mTrackingState = mpTracker->mState;
+    mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;
+    mTrackedKeyPointsUn = mpTracker->mCurrentFrame.mvKeysUn;
+
+    return Tcw;
+}
+
+bool System::GetMonoVIEnable(void)
+{
+    return mbMonoVIEnable;
+}
+
+void System::SetMonoVIEnable(bool flag)
+{
+    mbMonoVIEnable = flag;
+    mpTracker->SetMonoVIEnable(mbMonoVIEnable);
+    mpLocalMapper->SetMonoVIEnable(mbMonoVIEnable);
+    mpLoopCloser->SetMonoVIEnable(mbMonoVIEnable);
+}
+
+bool System::GetDeactiveLoopCloserInMonoVI(void)
+{
+    return mbDeactiveLoopCloserInMonoVI;
+}
+
+void System::SetDeactiveLoopCloserInMonoVI(bool flag)
+{
+    mbDeactiveLoopCloserInMonoVI = flag;
+    mpLocalMapper->SetDeactiveLoopCloserInMonoVI(mbDeactiveLoopCloserInMonoVI);
+}
+
+void System::SaveKeyFrameTrajectoryNavState(const string &filename)
+{
+    cout << endl << "Saving keyframe NavState to " << filename << " ..." << endl;
+
+    vector<KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
+
+    // Transform all keyframes so that the first keyframe is at the origin.
+    // After a loop closure the first keyframe might not be at the origin.
+    //cv::Mat Two = vpKFs[0]->GetPoseInverse();
+
+    ofstream f;
+    f.open(filename.c_str());
+    f << fixed;
+
+    for(size_t i=0; i<vpKFs.size(); i++)
+    {
+        KeyFrame* pKF = vpKFs[i];
+
+       // pKF->SetPose(pKF->GetPose()*Two);
+
+        if(pKF->isBad())
+            continue;
+
+        Eigen::Vector3d P = pKF->GetNavState().Get_P();
+        Eigen::Vector3d V = pKF->GetNavState().Get_V();
+        Eigen::Quaterniond q = pKF->GetNavState().Get_R().unit_quaternion();
+        Eigen::Vector3d bg = pKF->GetNavState().Get_BiasGyr();
+        Eigen::Vector3d ba = pKF->GetNavState().Get_BiasAcc();
+        Eigen::Vector3d dbg = pKF->GetNavState().Get_dBias_Gyr();
+        Eigen::Vector3d dba = pKF->GetNavState().Get_dBias_Acc();
+        f << setprecision(6) << pKF->mTimeStamp << setprecision(7) << " ";
+        f << P(0) << " " << P(1) << " " << P(2) << " ";
+        f << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << " ";
+        f << V(0) << " " << V(1) << " " << V(2) << " ";
+        f << bg(0)+dbg(0) << " " << bg(1)+dbg(1) << " " << bg(2)+dbg(2) << " ";
+        f << ba(0)+dba(0) << " " << ba(1)+dba(1) << " " << ba(2)+dba(2) << " ";
+//        f << bg(0) << " " << bg(1) << " " << bg(2) << " ";
+//        f << ba(0) << " " << ba(1) << " " << ba(2) << " ";
+//        f << dbg(0) << " " << dbg(1) << " " << dbg(2) << " ";
+//        f << dba(0) << " " << dba(1) << " " << dba(2) << " ";
+        f << endl;
+    }
+
+    f.close();
+    cout << endl << "NavState trajectory saved!" << endl;
+}
+
+// retrun the state of track with IMU.
+bool System::GetTrackWithIMUState()
+{
+    if(mpTracker->mState==Tracking::OK && mpLocalMapper->GetVINSInited())
+        return true;
+    else
+        return false;
+}
+
+//// retrun the state of track with IMU.
+//bool System::GetTrackingState()
+//{
+//    if(mpTracker->mState==Tracking::OK)
+//        return true;
+//    else
+//        return false;
+//}
+
+// return the time-consuming of ProcessingFrame, construct Frame, Track, TrackWithIMU, TrackLocalMapWithIMU
+double System::GetTimeOfProcessingFrame(){
+    return mpTracker->GetTimeOfProcessingFrame();
+}
+
+double System::GetTimeOfConstructFrame(){
+    return mpTracker->GetTimeOfConstructFrame();
+}
+
+double System::GetTimeOfTrack(){
+    return mpTracker->GetTimeOfTrack();
+}
+
+double System::GetTimeOfTrackWithIMU(){
+    return mpTracker->GetTimeOfTrackWithIMU();
+}
+
+double System::GetTimeOfTrackLocalMapWithIMU(){
+    return mpTracker->GetTimeOfTrackLocalMapWithIMU();
+}
+
+// return the time-consuming of ORB Extract (in Tracking.h,  in ORBextractor.cc)
+double System::GetTimeOfComputePyramid(){
+    return mpTracker->GetTimeOfComputePyramid();
+}
+
+double System::GetTimeOfComputeKeyPointsOctTree(){
+    return mpTracker->GetTimeOfComputeKeyPointsOctTree();
+}
+
+double System::GetTImeOfComputeDescriptor(){
+    return mpTracker->GetTImeOfComputeDescriptor();
+}
+
+// return the time-consuming of LocalMapping
+double System::GetTimeOfProcessNewKeyFrame(){
+    return mpLocalMapper->GetTimeOfProcessNewKeyFrame();
+}
+
+double System::GetTimeOfComputeBow(){
+    return mpLocalMapper->GetTimeOfComputeBow();
+}
+
+double System::GetTimeOfAssociateMapPoints(){
+    return mpLocalMapper->GetTimeOfAssociateMapPoints();
+}
+
+double System::GetTimeOfUpdateConnections(){
+    return mpLocalMapper->GetTimeOfUpdateConnections();
+}
+
+double System::GetTimeOfMapPointCulling(){
+    return mpLocalMapper->GetTimeOfMapPointCulling();
+}
+
+double System::GetTimeOfCreateNewMapPoints(){
+    return mpLocalMapper->GetTimeOfCreateNewMapPoints();
+}
+double System::GetTimeOfSearchInNeighbors(){
+    return mpLocalMapper->GetTimeOfSearchInNeighbors();
+}
+
+double System::GetTimeOfLocalBA(){
+    return mpLocalMapper->GetTimeOfLocalBA();
+}
+
+double System::GetTimeOfKeyFrameCulling(){
+    return mpLocalMapper->GetTimeOfKeyFrameCulling();
+}
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
 
 System::System(const string strVocFile, const eSensor sensor, ORBParameters& parameters,
                const std::string & map_file, bool load_map): // map serialization addition
                mSensor(sensor), mbReset(false),mbActivateLocalizationMode(false), mbDeactivateLocalizationMode(false),
                map_file(map_file), load_map(load_map)
 {
+    mbDeactiveLoopCloserInMonoVI = false;
+    mbMonoVIEnable = false;
+
     // Output welcome message
     cout << endl <<
     "ORB-SLAM2 Copyright (C) 2014-2016 Raul Mur-Artal, University of Zaragoza." << endl <<
@@ -122,7 +388,7 @@ System::System(const string strVocFile, const eSensor sensor, ORBParameters& par
     currently_localizing_only_ = false;
 }
 
-void System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
+cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
 {
     if(mSensor!=STEREO)
     {
@@ -171,9 +437,10 @@ void System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const do
     mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;
     mTrackedKeyPointsUn = mpTracker->mCurrentFrame.mvKeysUn;
     current_position_ = Tcw;
+    return Tcw;
 }
 
-void System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp)
+cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp)
 {
     if(mSensor!=RGBD)
     {
@@ -222,9 +489,10 @@ void System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double 
     mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;
     mTrackedKeyPointsUn = mpTracker->mCurrentFrame.mvKeysUn;
     current_position_ = Tcw;
+    return Tcw;
 }
 
-void System::TrackMonocular(const cv::Mat &im, const double &timestamp)
+cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp)
 {
     if(mSensor!=MONOCULAR)
     {
@@ -274,6 +542,7 @@ void System::TrackMonocular(const cv::Mat &im, const double &timestamp)
     mTrackedKeyPointsUn = mpTracker->mCurrentFrame.mvKeysUn;
 
     current_position_ = Tcw;
+    return Tcw;
 }
 
 bool System::MapChanged()

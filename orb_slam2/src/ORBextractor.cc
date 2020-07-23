@@ -62,6 +62,8 @@
 
 #include "ORBextractor.h"
 
+#include<chrono>
+//#include "System.h"
 
 using namespace cv;
 using namespace std;
@@ -1049,13 +1051,27 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     Mat image = _image.getMat();
     assert(image.type() == CV_8UC1 );
 
-    // Pre-compute the scale pyramid
+
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+
+    /// Pre-compute the scale pyramid        /// 2.434ms
     ComputePyramid(image);
+
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();    // start timer
+    mTimeOfComputePyramid = 1000 * std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+
+
+    /// compute KeyPoints Oct Tree           /// 8-9ms
+    std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
 
     vector < vector<KeyPoint> > allKeypoints;
     ComputeKeyPointsOctTree(allKeypoints);
     //ComputeKeyPointsOld(allKeypoints);
 
+    std::chrono::steady_clock::time_point t4 = std::chrono::steady_clock::now();    // start timer
+    mTimeOfComputeKeyPointsOctTree = 1000 * std::chrono::duration_cast<std::chrono::duration<double> >(t4 - t3).count();
+
+    /// compute descriptors                  /// 4-8ms
     Mat descriptors;
 
     int nkeypoints = 0;
@@ -1071,6 +1087,8 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
 
     _keypoints.clear();
     _keypoints.reserve(nkeypoints);
+
+    std::chrono::steady_clock::time_point t5 = std::chrono::steady_clock::now();    // start timer
 
     int offset = 0;
     for (int level = 0; level < nlevels; ++level)
@@ -1102,6 +1120,9 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
         // And add the keypoints to the output
         _keypoints.insert(_keypoints.end(), keypoints.begin(), keypoints.end());
     }
+
+    std::chrono::steady_clock::time_point t6 = std::chrono::steady_clock::now();
+    mTimeOfComputeDescriptor = 1000 * std::chrono::duration_cast<std::chrono::duration<double> >(t6 - t5).count();
 }
 
 void ORBextractor::ComputePyramid(cv::Mat image)

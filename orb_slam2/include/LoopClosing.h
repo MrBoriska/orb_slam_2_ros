@@ -21,17 +21,29 @@
 #ifndef LOOPCLOSING_H
 #define LOOPCLOSING_H
 
+#include <opencv2/core.hpp>
+#include <thread>
+#include <mutex>
+#include <Eigen/Core>
+#include <functional>
+#include <list>
+#include <map>
+#include <set>
+#include <utility>
+#include <vector>
+
 #include "KeyFrame.h"
 #include "LocalMapping.h"
 #include "Map.h"
 #include "ORBVocabulary.h"
 #include "Tracking.h"
-
 #include "KeyFrameDatabase.h"
-
-#include <thread>
-#include <mutex>
 #include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
+#include "Thirdparty/g2o/g2o/types/sim3.h"
+
+//-------------------------------------------------------------------
+#include "../src/IMU/configparam.h"
+
 
 namespace ORB_SLAM2
 {
@@ -39,10 +51,47 @@ namespace ORB_SLAM2
 class Tracking;
 class LocalMapping;
 class KeyFrameDatabase;
+class KeyFrame;
+class Map;
+class MapPoint;
 
 
 class LoopClosing
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+
+public:
+    bool SetConfigParam(ConfigParam* pParams);
+
+    bool GetMapUpdateFlagForTracking();
+    void SetMapUpdateFlagInTracking(bool bflag);
+
+
+    int GetLoopCounter(void) { return mLoopCounter; }
+    bool GetDeactiveLoopCloserInMonoVI(void) { return mbDeactiveLoopCloserInMonoVI; }
+    void SetDeactiveLoopCloserInMonoVI(bool flag=true) { mbDeactiveLoopCloserInMonoVI = flag; }
+
+    bool GetMonoVIEnable(void);
+    void SetMonoVIEnable(bool flag=false);
+
+private:
+    ConfigParam* mpParams;
+    bool mbMonoVIEnable;
+
+    std::mutex mMutexMapUpdateFlag;
+    bool mbMapUpdateFlagForTracking;
+
+    int mLoopCounter;
+    bool mbDeactiveLoopCloserInMonoVI;
+
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 public:
 
     typedef pair<set<KeyFrame*>,int> ConsistentGroup;    

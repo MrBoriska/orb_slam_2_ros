@@ -36,6 +36,11 @@
 #include "LoopClosing.h"
 #include "KeyFrameDatabase.h"
 #include "ORBVocabulary.h"
+//#include "Viewer.h"
+
+#include "../src/IMU/imudata.h"
+//#include "../src/IMU/configparam.h"
+
 
 namespace ORB_SLAM2
 {
@@ -47,6 +52,10 @@ class LoopClosing;
 
 struct ORBParameters;
 
+class ConfigParam;  /// for VI-ORB_SLAM
+
+//class IMUData;
+
 class System
 {
 public:
@@ -57,6 +66,64 @@ public:
         RGBD=2
     };
 
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+
+public:
+    bool bLocalMapAcceptKF(void);
+    bool bLocalMapperCreateNewMapPointsFinished(void);
+
+    bool SetConfigParam(ConfigParam* pParams);
+
+    // Proccess the given monocular frame and IMU data
+    // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
+    // Returns the camera pose (empty if tracking fails).
+    cv::Mat TrackMonoVI(const cv::Mat &im, const std::vector<IMUData> &vimu, const double &timestamp);
+    bool GetMonoVIEnable(void);
+    void SetMonoVIEnable(bool flag=false);
+    bool GetDeactiveLoopCloserInMonoVI(void);
+    void SetDeactiveLoopCloserInMonoVI(bool flag=false);
+
+    void SaveKeyFrameTrajectoryNavState(const string &filename);
+
+    // retrun the state of track with IMU.
+    bool GetTrackWithIMUState(void);
+//    bool GetTrackingState(void);
+
+    // return the time-consuming of ProcessingFrame, construct Frame, Track, TrackWithIMU, TrackLocalMapWithIMU
+    double GetTimeOfProcessingFrame(void);
+    double GetTimeOfConstructFrame(void);
+    double GetTimeOfTrack(void);
+    double GetTimeOfTrackWithIMU(void);
+    double GetTimeOfTrackLocalMapWithIMU(void);
+
+    // return the time-consuming of ORB Extract (in Tracking.h,  in ORBextractor.cc)
+    double GetTimeOfComputePyramid(void);
+    double GetTimeOfComputeKeyPointsOctTree(void);
+    double GetTImeOfComputeDescriptor(void);
+
+    // return the time-consuming of LocalMapping
+    double GetTimeOfProcessNewKeyFrame(void);
+    double GetTimeOfComputeBow(void);
+    double GetTimeOfAssociateMapPoints(void);
+    double GetTimeOfUpdateConnections(void);
+    double GetTimeOfMapPointCulling(void);
+    double GetTimeOfCreateNewMapPoints(void);
+    double GetTimeOfSearchInNeighbors(void);
+    double GetTimeOfLocalBA(void);
+    double GetTimeOfKeyFrameCulling(void);
+
+
+private:
+    bool mbMonoVIEnable;
+    bool mbDeactiveLoopCloserInMonoVI;
+
+    ConfigParam* mpParams;
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 public:
 
     // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
@@ -66,18 +133,18 @@ public:
     // Process the given stereo frame. Images must be synchronized and rectified.
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
     // Returns the camera pose (empty if tracking fails).
-    void TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp);
+    cv::Mat TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp);
 
     // Process the given rgbd frame. Depthmap must be registered to the RGB frame.
     // Input image: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
     // Input depthmap: Float (CV_32F).
     // Returns the camera pose (empty if tracking fails).
-    void TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp);
+    cv::Mat TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp);
 
-    // Process the given monocular frame
+    // Proccess the given monocular frame
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
     // Returns the camera pose (empty if tracking fails).
-    void TrackMonocular(const cv::Mat &im, const double &timestamp);
+    cv::Mat TrackMonocular(const cv::Mat &im, const double &timestamp);
 
     // Returns true if there have been a big map change (loop closure, global BA)
     // since last call to this function
@@ -203,5 +270,69 @@ private:
 };
 
 }// namespace ORB_SLAM
+
+//the following are UBUNTU/LINUX ONLY terminal color
+#define RESET "\033[0m"
+#define BLACK "\033[30m" /* Black */
+#define RED "\033[31m" /* Red */
+#define GREEN "\033[32m" /* Green */
+#define YELLOW "\033[33m" /* Yellow */
+#define BLUE "\033[34m" /* Blue */
+#define MAGENTA "\033[35m" /* Magenta 品红*/
+#define CYAN "\033[36m" /* Cyan 青色 */
+#define WHITE "\033[37m" /* White */
+#define BOLDBLACK "\033[1m\033[30m" /* Bold Black */
+#define BOLDRED "\033[1m\033[31m" /* Bold Red */
+#define BOLDGREEN "\033[1m\033[32m" /* Bold Green */
+#define BOLDYELLOW "\033[1m\033[33m" /* Bold Yellow */
+#define BOLDBLUE "\033[1m\033[34m" /* Bold Blue */
+#define BOLDMAGENTA "\033[1m\033[35m" /* Bold Magenta */
+#define BOLDCYAN "\033[1m\033[36m" /* Bold Cyan */
+#define BOLDWHITE "\033[1m\033[37m" /* Bold White */
+
+/*
+ * 在构造函数中记录当前的系统时间，在析构函数中输出当前的系统时间与之前的差，精度是us
+ * 使用方法：在需要计时的程序段之前构造类对象，在程序段之后获取时间
+ * example:
+ *		 Timer time; //开始计时
+ *		 ....
+ *		 printf("time: %d us\n", time.runTime()); //显示时间
+
+*/
+// 计时
+#include <stdio.h>
+#include <sys/time.h>
+class Timer
+{
+    public:
+
+        struct timeval start, end;
+        Timer() // 构造函数，开始记录时间
+        {
+            gettimeofday( &start, NULL );
+        }
+        void freshTimer()
+        {
+            gettimeofday( &start, NULL );
+        }
+
+        int runTime()
+        {
+            gettimeofday( &end, NULL );
+            return 1000000 * ( end.tv_sec - start.tv_sec ) + end.tv_usec -start.tv_usec;
+        }
+        double runTime_us()
+        {
+            return runTime()/1.0;
+        }
+        double runTime_ms()
+        {
+            return runTime() / 1000.0;
+        }
+        double runTime_s()
+        {
+            return runTime() / 1000000.0;
+        }
+};
 
 #endif // SYSTEM_H

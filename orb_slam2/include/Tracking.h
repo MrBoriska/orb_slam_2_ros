@@ -43,6 +43,11 @@
 
 #include <mutex>
 
+//------------------------------
+#include "../src/IMU/IMUPreintegrator.h"
+#include "../src/IMU/configparam.h"
+
+
 namespace ORB_SLAM2
 {
 
@@ -62,8 +67,89 @@ struct ORBParameters{
     float k1, k2, p1, p2, k3;
 };
 
+class IMUData;      /// for VI-ORB_SLAM
+class ConfigParam;  /// for VI-ORB_SLAM
+class NavState;
+
 class Tracking
-{
+{  
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    bool SetConfigParam(ConfigParam* pParams);
+    cv::Mat GrabImageMonoVI(const cv::Mat &im, const std::vector<IMUData> &vimu, const double &timestamp);
+
+    bool GetMonoVIEnable(void);
+    void SetMonoVIEnable(bool flag=false);
+
+    // return the time-consuming of ProcessingFrame, construct Frame, Track, TrackWithIMU, TrackLocalMapWithIMU
+    double GetTimeOfProcessingFrame(void) { return mTimeOfProcessingFrame; }
+    double GetTimeOfConstructFrame(void) { return mTimeOfConstructFrame; }
+    double GetTimeOfTrack(void) { return mTimeOfTrack; }
+    double GetTimeOfTrackWithIMU(void) { return mTimeOfTrackWithIMU; }
+    double GetTimeOfTrackLocalMapWithIMU(void) { return mTimeOfTrackLocalMapWithIMU; }
+
+    // return the time-consuming of ORB Extract (in ORBextractor.cc)
+    double GetTimeOfComputePyramid(void) { if(mpORBextractorLeft) return mpORBextractorLeft->GetTimeOfComputePyramid(); else return 0.0;}
+    double GetTimeOfComputeKeyPointsOctTree(void) { if(mpORBextractorLeft) return mpORBextractorLeft->GetTimeOfComputeKeyPointsOctTree(); else return 0.0;}
+    double GetTImeOfComputeDescriptor(void) { if(mpORBextractorLeft) return mpORBextractorLeft->GetTImeOfComputeDescriptor(); else return 0.0;}
+
+protected:
+    void UpdateLastFrameWithIMU();
+
+    void RecomputeIMUBiasAndCurrentNavstate(NavState& nscur);
+
+    // Predict the NavState of Current Frame by IMU
+    void PredictNavStateByIMU( bool bMapUpdated );
+
+    bool TrackWithIMU(bool bMapUpdated=false);
+    bool TrackReferenceKeyFrameWithIMU(void);
+    bool TrackLocalMapWithIMU(bool bMapUpdated=false);
+
+    IMUPreintegrator GetIMUPreIntSinceLastKF(Frame* pCurF, KeyFrame* pLastKF, const std::vector<IMUData>& vIMUSinceLastKF);
+    IMUPreintegrator GetIMUPreIntSinceLastFrame(Frame* pCurF, Frame* pLastF);
+
+public:
+    // Flags for relocalization. Create new KF once bias re-computed & flag for preparation for bias re-compute
+    bool mbCreateNewKFAfterReloc;
+    bool mbRelocBiasPrepare;    // Flag for Bias update after relocalization: use 20 frames to update bias, and then set to false
+    // 20 frames are used to compute bias
+    std::vector<Frame> mv20FramesReloc;
+
+    IMUPreintegrator mIMUPreIntInTrack;
+
+    // IMU Data since last KF. Append when new data is provided
+    // Should be cleared in 1. initialization beginning, 2. new keyframe created.
+    std::vector<IMUData> mvIMUSinceLastKF;
+
+private:
+    ConfigParam* mpParams;
+    bool mbMonoVIEnable;
+
+    // record time consuming of ProcessingFrame, construct Frame, Track, TrackWithIMU, TrackLocalMapWithIMU
+    double mTimeOfProcessingFrame;
+    double mTimeOfConstructFrame;
+    double mTimeOfTrack;
+    double mTimeOfTrackWithIMU;
+    double mTimeOfTrackLocalMapWithIMU;
+
+    bool mbTrackWithIMUSuccess;
+    bool mbTrackLocalMapWithIMUSuccess;
+    bool mbTrackReferenceKeyFrameWithIMUSuccess;
+    bool mbTrackWithVisionSuccess;
+    bool mbTrackLocalMapWithVisionSuccess;
+    bool mbTrackReferenceKeyFrameWithVisionSuccess;
+
+    Eigen::Vector3d bias_g;
+    Eigen::Vector3d bias_a;
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 
 public:
     Tracking(System* pSys, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, Map* pMap,
@@ -184,10 +270,10 @@ protected:
     KeyFrame* mpReferenceKF;
     std::vector<KeyFrame*> mvpLocalKeyFrames;
     std::vector<MapPoint*> mvpLocalMapPoints;
-
+    
     // System
     System* mpSystem;
-
+    
     //Drawers
     FrameDrawer* mpFrameDrawer;
 

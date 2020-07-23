@@ -21,13 +21,15 @@
 #ifndef LOCALMAPPING_H
 #define LOCALMAPPING_H
 
+#include <opencv2/core.hpp>
+#include <mutex>
+#include <list>
+
 #include "KeyFrame.h"
 #include "Map.h"
 #include "LoopClosing.h"
 #include "Tracking.h"
 #include "KeyFrameDatabase.h"
-
-#include <mutex>
 
 
 namespace ORB_SLAM2
@@ -36,9 +38,138 @@ namespace ORB_SLAM2
 class Tracking;
 class LoopClosing;
 class Map;
+class KeyFrame;
+class MapPoint;
 
 class LocalMapping
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+public:
+    bool GetDeactiveLoopCloserInMonoVI(void);
+    void SetDeactiveLoopCloserInMonoVI(bool flag=false);// { mbDeactiveLoopCloserInMonoVI = flag; }
+
+    bool GetMonoVIEnable(void);
+    void SetMonoVIEnable(bool flag=false);
+
+    std::mutex mMutexAssociateMapPointConutIncrease;
+    void AssociateMapPointsForMultiThread(
+            const vector<MapPoint*> vpMapPointMatches,
+            size_t &i_count);
+
+    bool bCreateNewMapPointsFinished;
+
+public:
+    bool SetConfigParam(ConfigParam* pParams);
+//    LocalMapping(Map* pMap, const float bMonocular, ConfigParam* pParams) ;
+
+    // KeyFrames in Local Window, for Local BA
+    // Insert in ProcessNewKeyFrame()
+    void AddToLocalWindow(KeyFrame* pKF);
+    void DeleteBadInLocalWindow(void);
+
+    bool TryInitVIO(void);
+    bool TryInitVIOWithoutPreCalibration(void);
+    bool GetVINSInited(void);
+    void SetVINSInited(bool flag);
+
+    bool GetFirstVINSInited(void);
+    void SetFirstVINSInited(bool flag);
+
+    bool GetMapUpdateFlagForTracking();
+    void SetMapUpdateFlagInTracking(bool flag);
+    bool GetEnableChangeMapUpdateFlagForTracking();
+    KeyFrame* GetMapUpdateKF(void);
+
+    void KeyFrameCullingForMonoVI(void);
+
+    double GetVINSInitScale(void);
+    cv::Mat GetGravityVec(void);
+
+    cv::Mat GetVINSInitTbc(void);
+    cv::Mat GetVINSInitRbc(void);
+    cv::Mat GetVINSInitPbc(void);
+
+    void ResetBiasgToZero(std::vector<KeyFrame*> vScaleGravityKF);
+
+
+    // record the time consuming
+    double GetTimeOfProcessNewKeyFrame(void) { return mTimeOfProcessNewKeyFrame; }
+    double GetTimeOfComputeBow(void) { return mTimeOfComputeBow; }
+    double GetTimeOfAssociateMapPoints(void) { return mTimeOfAssociateMapPoints; }
+    double GetTimeOfUpdateConnections(void) { return mTimeOfUpdateConnections; }
+    double GetTimeOfMapPointCulling(void) { return mTimeOfMapPointCulling; }
+    double GetTimeOfCreateNewMapPoints(void) { return mTimeOfCreateNewMapPoints; }
+    double GetTimeOfSearchInNeighbors(void) { return mTimeOfSearchInNeighbors; }
+    double GetTimeOfLocalBA(void) { return mTimeOfLocalBA; }
+    double GetTimeOfKeyFrameCulling(void) { return mTimeOfKeyFrameCulling; }
+
+    // check convergence
+    double GetVariance(std::vector<double> &vector_);           // variance
+    double GetStandardDeviation(std::vector<double> &vector_);  // Standard Deviation
+    double GetVariance(std::vector<cv::Mat> &vector_);
+    bool CheckRbcEstimationConverge();
+    bool CheckPbcEstimationConverge();
+
+private:
+    ConfigParam* mpParams;
+    bool mbMonoVIEnable;
+    bool mbDeactiveLoopCloserInMonoVI;
+
+    // record the time consuming
+    double mTimeOfProcessNewKeyFrame;
+    double mTimeOfComputeBow;
+    double mTimeOfAssociateMapPoints;
+    double mTimeOfUpdateConnections;
+    double mTimeOfMapPointCulling;
+    double mTimeOfCreateNewMapPoints;
+    double mTimeOfSearchInNeighbors;
+    double mTimeOfLocalBA;
+    double mTimeOfKeyFrameCulling;
+
+protected:
+    double mnStartTime;
+    bool mbFirstTry;
+    double mnVINSInitScale;     // scale
+    cv::Mat mGravityVec;        // gravity vector in world frame
+    cv::Mat mVINSInitTbc;       // Tbc
+    cv::Mat mVINSInitRbc;       // Rbc
+    cv::Mat mVINSInitPbc;       // Pbc
+    Vector3d mVINSInitBiasg;    // bgest
+    Vector3d mVINSInitBiasa;    // biasa_eig
+
+    bool mbVINSInitRbcConverged;    // Rbc converged
+    bool mbVINSInitPbcConverged;    // Pbc converged
+
+    int nNewMapPointsCreatedByLastKF;
+
+    std::mutex mMutexVINSInitFlag;
+    bool mbVINSInited;
+
+    std::mutex mMutexFirstVINSInitFlag;
+    bool mbFirstVINSInited;
+
+    unsigned int mnLocalWindowSize;
+    std::list<KeyFrame*> mlLocalKeyFrames;
+
+    std::mutex mMutexMapUpdateFlag;
+    bool mbMapUpdateFlagForTracking;
+    bool mbEnableChangeMapUpdateFlagForTracking;    // Enable change mbMapUpdateFlagForTracking
+
+    KeyFrame* mpMapUpdateKF;
+
+    std::vector<Eigen::Vector3d> mvRecordEstimatedRbc;   // Rbc: yaw, roll, pitch
+    std::vector<double> mvRecordEstimatedRbcTimeStamps;
+
+    std::vector<Eigen::Vector3d> mvRecordEstimatedPbc;   // Pbc: x,y,z
+    std::vector<double> mvRecordEstimatedPbcTimeStamps;
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 public:
     LocalMapping(Map* pMap, const float bMonocular);
 

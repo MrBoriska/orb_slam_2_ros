@@ -23,6 +23,10 @@
 
 #include<vector>
 
+#include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
+#include <cstddef>
+
 #include "MapPoint.h"
 #include "Thirdparty/DBoW2/DBoW2/BowVector.h"
 #include "Thirdparty/DBoW2/DBoW2/FeatureVector.h"
@@ -30,7 +34,10 @@
 #include "KeyFrame.h"
 #include "ORBextractor.h"
 
-#include <opencv2/opencv.hpp>
+#include "../src/IMU/NavState.h"
+#include "../src/IMU/imudata.h"
+
+namespace ORB_SLAM2 { class ORBextractor; }
 
 namespace ORB_SLAM2
 {
@@ -40,8 +47,78 @@ namespace ORB_SLAM2
 class MapPoint;
 class KeyFrame;
 
+// Forward Declaration
+//class IMUData;
+class IMUPreintegrator;
+
 class Frame
 {
+/// for VI-ORB_SLAM2
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    /// Constructor for Monocular VI
+    Frame(const cv::Mat &imGray, const double &timeStamp, const std::vector<IMUData> &vimu,
+          ORBextractor* extractor,ORBVocabulary* voc,cv::Mat &K, cv::Mat &distCoef,
+          const float &bf, const float &thDepth, KeyFrame* pLastKF=NULL);
+
+    /// 计算LastFrame到CurrFrame之间的IMU的积分,结果保存在IMUPreInt
+    void ComputeIMUPreIntSinceLastFrame(const Frame* pLastF, IMUPreintegrator& IMUPreInt) const;
+    /// 计算LastKeyFrame到CurrFrame之间的IMU的积分,结果保存在imupreint. --- 需额外输入IMUData
+    void ComputeIMUPreIntSinceLastKF(KeyFrame* pLastKF,IMUPreintegrator& IMUPreInt, const std::vector<IMUData>& vIMUSInceLastKF) const;
+    /// use the computed camera pose to update the body pose
+    void UpdateNavStatePVRFromTcw(const cv::Mat &Tcw,const cv::Mat &Tbc);
+    /// 通过body的pose与Tbc计算相机的姿态mTcw
+    void UpdatePoseFromNS(const cv::Mat &Tbc);
+    /// 将预积分的结果作用到body,结果保存在mNavState上
+    void UpdateNavState(const IMUPreintegrator& IMUPreInt, const Vector3d& gw);
+    /// 将预积分的结果作用到body,结果保存在mNavState上 (consider the dbiasg and dbiasa)
+    void UpdateNavState(const IMUPreintegrator& IMUPreInt, const Vector3d& gw,
+                        const Vector3d& dbiasg, const Vector3d& dbiasa);
+    /// use a exiting NavState to initial mNavState
+    void SetInitialNavStateAndBias(const NavState& ns);
+
+    /// 获取当前的mNavState,即获取body的姿态
+    const NavState& GetNavState(void) const;
+    /// 设置mNavState, 即设置body的姿态
+    void SetNavState(const NavState& ns);
+    void SetNavStateBiasGyr(const Vector3d &bg);
+    void SetNavStateBiasAcc(const Vector3d &ba);
+
+    /// set current frame as keyframe
+    void SetCurFrameAsKeyframe()    { mbIsKeyframe=true; }
+    void setCurFrameAsNormalFrame() { mbIsKeyframe = false;}
+    bool CheckCurFrameIsKeyframe()  { return mbIsKeyframe; }
+
+    // return time-consuming of ORB Extraction, descriptor compute
+    double GetTimeOfORBExtract(void) { return mTimeOfORBExtract; }
+
+public:
+    bool mbIsKeyframe;
+
+    // IMU Data from last Frame to this Frame
+    std::vector<IMUData> mvIMUDataSinceLastFrame;
+
+    // For pose optimization, use aas prior and prior information (inverse covariance)
+    Matrix<double, 15, 15> mMargCovInv;
+    NavState mNavStatePrior;    //
+
+public:
+    NavState mNavState;
+
+private:
+    double mTimeOfORBExtract;
+//    double
+
+
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
+
 public:
     Frame();
 

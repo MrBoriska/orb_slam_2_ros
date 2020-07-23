@@ -44,6 +44,24 @@ public:
 
 class ORBextractor
 {
+/********************************************************************************/
+/**************************** for VI-ORB_SLAM2 Start ****************************/
+/********************************************************************************/
+public:
+    double GetTimeOfComputePyramid(void) { return mTimeOfComputePyramid; }
+    double GetTimeOfComputeKeyPointsOctTree(void) { return mTimeOfComputeKeyPointsOctTree; }
+    double GetTImeOfComputeDescriptor(void) { return mTimeOfComputeDescriptor; }
+
+private:
+    double mTimeOfComputePyramid;
+    double mTimeOfComputeKeyPointsOctTree;
+    double mTimeOfComputeDescriptor;
+
+
+/********************************************************************************/
+/***************************** for VI-ORB_SLAM2 End *****************************/
+/********************************************************************************/
+
 public:
     
     enum {HARRIS_SCORE=0, FAST_SCORE=1 };
