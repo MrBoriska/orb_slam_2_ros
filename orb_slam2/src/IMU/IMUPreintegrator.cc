@@ -1,5 +1,5 @@
-#include "IMUPreintegrator.h"
-#include "imudata.h"
+#include "IMU/IMUPreintegrator.h"
+#include "IMU/imudata.h"
 
 namespace ORB_SLAM2
 {

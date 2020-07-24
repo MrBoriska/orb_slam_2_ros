@@ -35,8 +35,8 @@
 #include <thread>
 #include "System.h"
 
-#include "../src/IMU/imudata.h"
-#include "../src/IMU/IMUPreintegrator.h"
+#include "IMU/imudata.h"
+#include "IMU/IMUPreintegrator.h"
 
 namespace ORB_SLAM2
 {

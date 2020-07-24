@@ -27,9 +27,9 @@
 #include"Thirdparty/g2o/g2o/types/types_six_dof_expmap.h"
 #include"Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
 
-#include "../src/IMU/imudata.h"
-#include "../src/IMU/IMUPreintegrator.h"
-#include "../src/IMU/NavState.h"
+#include "IMU/imudata.h"
+#include "IMU/IMUPreintegrator.h"
+#include "IMU/NavState.h"
 
 namespace ORB_SLAM2
 {

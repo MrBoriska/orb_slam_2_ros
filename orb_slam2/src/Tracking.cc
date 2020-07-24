@@ -37,9 +37,9 @@
 
 #include<mutex>
 
-#include "../src/IMU/NavState.h"    /// for VI-ORB_SLAM2
-#include "../src/IMU/configparam.h"
-#include "../src/IMU/NavState.h"
+#include "IMU/NavState.h"    /// for VI-ORB_SLAM2
+#include "IMU/configparam.h"
+#include "IMU/NavState.h"
 
 using namespace std;
 

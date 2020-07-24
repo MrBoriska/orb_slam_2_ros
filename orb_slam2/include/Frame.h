@@ -34,8 +34,8 @@
 #include "KeyFrame.h"
 #include "ORBextractor.h"
 
-#include "../src/IMU/NavState.h"
-#include "../src/IMU/imudata.h"
+#include "IMU/NavState.h"
+#include "IMU/imudata.h"
 
 namespace ORB_SLAM2 { class ORBextractor; }
 

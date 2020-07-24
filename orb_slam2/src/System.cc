@@ -33,7 +33,7 @@
 #include "LoopClosing.h"
 #include "KeyFrameDatabase.h"
 
-#include "../src/IMU/configparam.h"
+#include "IMU/configparam.h"
 
 bool has_suffix(const std::string &str, const std::string &suffix) {
   std::size_t index = str.find(suffix, str.size() - suffix.size());
@@ -88,7 +88,7 @@ cv::Mat System::TrackMonoVI(const cv::Mat &im, const std::vector<IMUData> &vimu,
             // Wait until Local Mapping has effectively stopped
             while(!mpLocalMapper->isStopped())
             {
-                usleep(1000);
+                std::this_thread::sleep_for(std::chrono::microseconds(1000));
             }
 
             mpTracker->InformOnlyTracking(true);
@@ -124,6 +124,7 @@ cv::Mat System::TrackMonoVI(const cv::Mat &im, const std::vector<IMUData> &vimu,
     mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;
     mTrackedKeyPointsUn = mpTracker->mCurrentFrame.mvKeysUn;
 
+    current_position_ = Tcw;
     return Tcw;
 }
 

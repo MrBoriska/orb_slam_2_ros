@@ -44,8 +44,8 @@
 #include <mutex>
 
 //------------------------------
-#include "../src/IMU/IMUPreintegrator.h"
-#include "../src/IMU/configparam.h"
+#include "IMU/IMUPreintegrator.h"
+#include "IMU/configparam.h"
 
 
 namespace ORB_SLAM2

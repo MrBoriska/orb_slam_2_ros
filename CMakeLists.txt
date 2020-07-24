@@ -119,17 +119,11 @@ add_library(${PROJECT_NAME} SHARED
   orb_slam2/src/Sim3Solver.cc
   orb_slam2/src/Initializer.cc
 
-  orb_slam2/src/IMU/configparam.h
   orb_slam2/src/IMU/configparam.cc
-  orb_slam2/src/IMU/imudata.h
   orb_slam2/src/IMU/imudata.cc
-  orb_slam2/src/IMU/IMUPreintegrator.h
   orb_slam2/src/IMU/IMUPreintegrator.cc
   orb_slam2/src/IMU/so3.cc
-  orb_slam2/src/IMU/so3.h
-  orb_slam2/src/IMU/NavState.h
   orb_slam2/src/IMU/NavState.cc
-  orb_slam2/src/IMU/g2otypes.h
   orb_slam2/src/IMU/g2otypes.cc
 )
 add_dependencies (${PROJECT_NAME} g2o DBoW2)
@@ -145,6 +139,16 @@ if (NOT BOOST_SERIALIZATION)
     message(FATAL_ERROR "Can't find libboost_serialization")
 endif()
 target_link_libraries(${PROJECT_NAME} ${BOOST_SERIALIZATION})
+
+#add_executable (${PROJECT_NAME}_mono_vi
+#  ros/src/MonoNodeVI.cc
+#  ros/src/Node.cc
+#)
+#add_dependencies (${PROJECT_NAME}_mono_vi ${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
+#
+#target_link_libraries(${PROJECT_NAME}_mono_vi
+#  ${LIBS_ROS}
+#)
 
 add_executable (${PROJECT_NAME}_mono
   ros/src/MonoNode.cc

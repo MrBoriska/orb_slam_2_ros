@@ -38,8 +38,8 @@
 #include "ORBVocabulary.h"
 //#include "Viewer.h"
 
-#include "../src/IMU/imudata.h"
-//#include "../src/IMU/configparam.h"
+#include "IMU/imudata.h"
+//#include "IMU/configparam.h"
 
 
 namespace ORB_SLAM2

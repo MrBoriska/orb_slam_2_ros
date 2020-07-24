@@ -36,9 +36,9 @@
 #include "Frame.h"
 #include "KeyFrameDatabase.h"
 #include "BoostArchiver.h"
-#include "../src/IMU/NavState.h"
-#include "../src/IMU/IMUPreintegrator.h"
-#include "../src/IMU/imudata.h"
+#include "IMU/NavState.h"
+#include "IMU/IMUPreintegrator.h"
+#include "IMU/imudata.h"
 namespace ORB_SLAM2
 {
 

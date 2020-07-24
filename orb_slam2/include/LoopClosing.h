@@ -42,7 +42,7 @@
 #include "Thirdparty/g2o/g2o/types/sim3.h"
 
 //-------------------------------------------------------------------
-#include "../src/IMU/configparam.h"
+#include "IMU/configparam.h"
 
 
 namespace ORB_SLAM2
