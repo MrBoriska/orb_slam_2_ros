@@ -2,8 +2,6 @@
 
 using namespace std;
 
-void SaveTimestamps(const vector<double> vTimestamps, const string &filename);
-
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "MonoVI");
@@ -13,7 +11,6 @@ int main(int argc, char **argv)
         ROS_WARN ("Arguments supplied via command line are neglected.");
     }
 
-    
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ros::NodeHandle node_handle;
     image_transport::ImageTransport image_transport (node_handle);
@@ -50,21 +47,6 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
   if(pParams->GetDeactiveLoopClosure() == true)
       orb_slam_->SetDeactiveLoopCloserInMonoVI(true);   // set deactive loop closure detection
 
-  // Vector for tracking time statistics
-  vector<float> vTimesTrack;
-  vector<double> vImageTimestamps;
-  vector<double> vImuTimestamps;
-
-  vector<double> vTimesOfProcessingFrame;
-  vector<double> vTimesOfTrack;
-  vector<double> vTimesOfConstructFrame;
-  vector<double> vTimesOfTrackWithIMU;
-  vector<double> vTimesOfTrackLocalMapWithIMU;
-
-  vector<double> vTimesOfComputePyramid;
-  vector<double> vTimesOfComputeKeyPointsOctTree;
-  vector<double> vTimesOfComputeDescriptor;
-
   /**
    * @brief added data sync
    */
@@ -79,13 +61,11 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
   std::vector<SensorMsgImuPtr> vimuMsg;
 
   // 3dm imu output per g. 1g=9.80665 according to datasheet
-  const double g3dm = 9.80665;
+  //const double g3dm = 9.80665;
   //const bool bAccMultiply98 = config.GetAccMultiply9p8();     // default: 0
-  const bool bAccMultiply98 = pParams->GetAccMultiply9p8();     // default: 0
+  //const bool bAccMultiply98 = pParams->GetAccMultiply9p8();     // default: 0
 
   ros::Rate r(400);
-  Timer tTimeOfNoImage;
-  bool bCheckTimeOfNoImage = false;
   int nImages = 0;    // image number
   while(ros::ok())
   {
@@ -106,19 +86,16 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
         double ay = imuMsg->linear_acceleration.y;
         double az = imuMsg->linear_acceleration.z;
         double timu = imuMsg->header.stamp.toSec();
-        vImuTimestamps.push_back(timu);
-        if(bAccMultiply98)
-        {
-            ax *= g3dm;
-            ay *= g3dm;
-            az *= g3dm;
-        }
+        
+        //ax /= 10.1;
+        //ay /= 10.1;
+        //az /= 10.1;
+
         ORB_SLAM2::IMUData imudata( wx, wy, wz, ax, ay, az, timu );
         vimuData.push_back( imudata );
       }
 
       double tframe = imageMsg->header.stamp.toSec();
-      vImageTimestamps.push_back( tframe );    // record stamps of new image
 
       std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
       /// grab image and track
@@ -126,95 +103,17 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
 
       std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
       double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count() * 1000; // ms
-
-      // Time statistic: Only record the time of successful tracking frame using vision & IMU.
-      //                 Ignore the time-consuming of VI-ORB_SLAM initialization section since it uses only vision.
-      if(orb_slam_->GetTrackWithIMUState())
-      {
-          // std::cout << "record time " << std::endl;
-          vTimesTrack.push_back(ttrack);      // record track time of new image
-
-          vTimesOfProcessingFrame.push_back(orb_slam_->GetTimeOfProcessingFrame());
-          vTimesOfTrack.push_back(orb_slam_->GetTimeOfTrack());
-          vTimesOfConstructFrame.push_back(orb_slam_->GetTimeOfConstructFrame());
-          vTimesOfTrackWithIMU.push_back(orb_slam_->GetTimeOfTrackWithIMU());
-          vTimesOfTrackLocalMapWithIMU.push_back(orb_slam_->GetTimeOfTrackLocalMapWithIMU());
-
-          vTimesOfComputePyramid.push_back(orb_slam_->GetTimeOfComputePyramid());
-          vTimesOfComputeKeyPointsOctTree.push_back(orb_slam_->GetTimeOfComputeKeyPointsOctTree());
-          vTimesOfComputeDescriptor.push_back(orb_slam_->GetTImeOfComputeDescriptor());
-      }
-
-      bCheckTimeOfNoImage = true;
-      tTimeOfNoImage.freshTimer(); // refresh timer
     }
-
-    // Stop system: if more than 10s the system do not receive any image
-    if( tTimeOfNoImage.runTime_s() > 10 && bCheckTimeOfNoImage )
-    {
-      break;
-    }
-
 
     ros::spinOnce();
     r.sleep();
   }
-
-  // Stop all threads
-  // orb_slam_->Shutdown();
-
-  double totaltime = 0;
-
-  double totalTimeOfProcessingFrame = 0;
-  double totalTimeOfTrack = 0;
-  double totalTimeOfConstructFrame = 0;
-  double totalTimeOfTrackWithIMU = 0;
-  double totalTimeOfTrackLocalMapWithIMU = 0;
-
-  double totalTimeOfComputePyramid = 0;
-  double totalTimeOfComputeKeyPointsOctTree = 0;
-  double totalTimeOfComputeDescriptor = 0;
-
-  int timeRecordNum = vTimesOfTrack.size();
-
-  for(int ni=0; ni<timeRecordNum; ni++) // nImages
-  {
-      totaltime+=vTimesTrack[ni];
-
-      totalTimeOfProcessingFrame += vTimesOfProcessingFrame[ni];
-      totalTimeOfTrack += vTimesOfTrack[ni];
-      totalTimeOfConstructFrame += vTimesOfConstructFrame[ni];
-      totalTimeOfTrackWithIMU += vTimesOfTrackWithIMU[ni];
-      totalTimeOfTrackLocalMapWithIMU += vTimesOfTrackLocalMapWithIMU[ni];
-
-      totalTimeOfComputePyramid += vTimesOfComputePyramid[ni];
-      totalTimeOfComputeKeyPointsOctTree += vTimesOfComputeKeyPointsOctTree[ni];
-      totalTimeOfComputeDescriptor += vTimesOfComputeDescriptor[ni];
-
-  }
-  cout << endl << "-------" << endl;
-  cout << "Time statistic: Only record the time of successful tracking frame using vision & IMU." << endl;
-  cout << "                Ignore the time-consuming of VI-ORB_SLAM initialization section since it uses only vision." << endl;
-  //cout << "median tracking time: " << vTimesTrack[timeRecordNum/2] << " ms"<< endl;
-  //cout << "mean tracking time: " << totaltime/timeRecordNum << " ms" << endl;
-
-  cout << "| mean time of ProcessingFrame:              " << totalTimeOfProcessingFrame           / timeRecordNum << " ms" << endl;
-  cout << "   | mean time of ConstructFrame:              " << totalTimeOfConstructFrame            / timeRecordNum << " ms" << endl;
-  cout << "       | mean time of ComputePyramid:              " << totalTimeOfComputePyramid            / timeRecordNum << " ms" << endl;
-  cout << "       | mean time of ComputeKeyPointsOctTre:      " << totalTimeOfComputeKeyPointsOctTree   / timeRecordNum << " ms" << endl;
-  cout << "       | mean time of ComputeDescriptor:           " << totalTimeOfComputeDescriptor         / timeRecordNum << " ms" << endl;
-  cout << "   | mean time of Track:                       " << totalTimeOfTrack                     / timeRecordNum << " ms" << endl;
-  cout << "       | mean time of TrackWithIMU:                " << totalTimeOfTrackWithIMU              / timeRecordNum << " ms" << endl;
-  cout << "       | mean time of TrackLocalMapWithIMU:        " << totalTimeOfTrackLocalMapWithIMU      / timeRecordNum << " ms" << endl;
 
   // Save camera trajectory
   //orb_slam_->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 
   // Save NavState trajectory (IMU)
   orb_slam_->SaveKeyFrameTrajectoryNavState("KeyFrameNavStateTrajectory.txt");
-
-  SaveTimestamps(vImageTimestamps, "ImageTimestamps.txt");
-  SaveTimestamps(vImuTimestamps, "ImuTimestamps.txt");
 
   // Stop all threads
   //orb_slam_->Shutdown();
@@ -247,18 +146,4 @@ void MonoNode::GrabImage(const sensor_msgs::ImageConstPtr& msg, const std::vecto
     
     Update();
 
-}
-
-void SaveTimestamps(const vector<double> vTimestamps, const string &filename)
-{
-    ofstream f;
-    f.open( filename.c_str() );
-    f << fixed;
-
-    for (size_t i=0, iend=vTimestamps.size(); i<iend; i++)
-    {
-        f << setprecision(6) << vTimestamps[i] << endl;
-    }
-    f.close();
-    std::cout << std::endl << " timestamps saved in file:  " << filename << std::endl;
 }
