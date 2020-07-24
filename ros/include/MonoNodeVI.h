@@ -36,13 +36,21 @@
 #include "System.h"
 #include "Node.h"
 
+#include "MsgSync/MsgSynchronizer.h"
+#include "IMU/imudata.h"
+#include "IMU/configparam.h"
+
+typedef sensor_msgs::ImuConstPtr    SensorMsgImuPtr;// ImuMsgPtr;
+typedef sensor_msgs::Imu            SensorMsgImu;
+typedef sensor_msgs::ImageConstPtr  SensorMsgImagePtr;
+typedef sensor_msgs::Image          SensorMsgImage;
 
 class MonoNode : public Node
 {
   public:
     MonoNode (const ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &node_handle, image_transport::ImageTransport &image_transport);
     ~MonoNode ();
-    void ImageCallback (const sensor_msgs::ImageConstPtr& msg);
+    void GrabImage(const sensor_msgs::ImageConstPtr& msg, const std::vector<ORB_SLAM2::IMUData> vimuData);
 
   private:
     image_transport::Subscriber image_subscriber;

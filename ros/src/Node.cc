@@ -84,7 +84,7 @@ void Node::Update () {
     }
   }
 
-  PublishRenderedImage (orb_slam_->DrawCurrentFrame());
+  //PublishRenderedImage (orb_slam_->DrawCurrentFrame());
 
   if (publish_pointcloud_param_) {
     PublishMapPoints (orb_slam_->GetAllMapPoints());

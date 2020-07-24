@@ -140,15 +140,16 @@ if (NOT BOOST_SERIALIZATION)
 endif()
 target_link_libraries(${PROJECT_NAME} ${BOOST_SERIALIZATION})
 
-#add_executable (${PROJECT_NAME}_mono_vi
-#  ros/src/MonoNodeVI.cc
-#  ros/src/Node.cc
-#)
-#add_dependencies (${PROJECT_NAME}_mono_vi ${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
-#
-#target_link_libraries(${PROJECT_NAME}_mono_vi
-#  ${LIBS_ROS}
-#)
+add_executable (${PROJECT_NAME}_mono_vi
+  ros/src/MonoNodeVI.cc
+  ros/src/Node.cc
+  ros/src/MsgSync/MsgSynchronizer.cc
+)
+add_dependencies (${PROJECT_NAME}_mono_vi ${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
+
+target_link_libraries(${PROJECT_NAME}_mono_vi
+  ${LIBS_ROS}
+)
 
 add_executable (${PROJECT_NAME}_mono
   ros/src/MonoNode.cc
