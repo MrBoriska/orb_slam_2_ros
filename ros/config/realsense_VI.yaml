@@ -39,7 +39,7 @@ deactiveLoopClosure: 1
 
 # set whether track LocalMap only with vision
 # 1: only with vision without IMU; 0: else
-onlyTrackLocalMap: 1
+onlyTrackLocalMap: 0
 
 # set whether display the time-consuming of different section.
 # 1: Display; 0: Not display
@@ -57,17 +57,17 @@ waitUntilLocalMapIdle: 0
 
 # estimate Extrinsic between camera and IMU
 # 1: estimate; 0: not estimate (use pre-calibration parameters)
-estimateExtrinsicBetweenCameraAndIMU: 1
+estimateExtrinsicBetweenCameraAndIMU: 0
 
 # create random matrix (Rbcstar_last) for the first VIO initialization
 # 1: create random matrix; 0: use Identity matrix
-CreateRandomMatrixLastForFirstVIOInit: 1
+CreateRandomMatrixLastForFirstVIOInit: 0
 
 imutopic: "/imu/data"
 imagetopic: "/camera/color/image_raw"
 
 # Timestamp shift. Timage = Timu + image_delay
-Camera.delaytoimu: 10
+Camera.delaytoimu: 0.02
 
 # acc=acc*9.8, if below is 1
 IMU.multiplyG: 0
@@ -88,19 +88,19 @@ LocalMapping.LocalWindowSize: 10
 #--------------------------------------------------------------------------------------------
 
 # imu sample rate per second
-IMU.rate: 150
+IMU.rate: 100
 
 # inertial sensor noise model parameters (static)
 # gyro "white noise" [ rad / s / sqrt(Hz) ]
-IMU.sigma_g: 1.6968e-04
+IMU.sigma_g: 1.6968e-03
 
 # gyro bias diffusion [ rad / s^2 / sqrt(Hz) ]
-IMU.sigma_gw: 1.9393e-05
+IMU.sigma_gw: 1.9393e-04
 
 # accel "white noise" [ m / s^2 / sqrt(Hz) ]
-IMU.sigma_a: 2.0000e-3
+IMU.sigma_a: 2.0000e-2
 
 # accel bias diffusion [ m / s^3 / sqrt(Hz) ].
-IMU.sigma_aw: 3.0000e-3
+IMU.sigma_aw: 3.0000e-2
 
 

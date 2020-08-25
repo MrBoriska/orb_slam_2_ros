@@ -179,8 +179,8 @@ tf::Transform Node::TransformFromMat (cv::Mat position_mat) {
 
 
 sensor_msgs::PointCloud2 Node::MapPointsToPointCloud (std::vector<ORB_SLAM2::MapPoint*> map_points) {
-  if (map_points.size() == 0) {
-    std::cout << "Map point vector is empty!" << std::endl;
+  if (map_points.size() > 0) {
+    ROS_INFO("Get %d map points", map_points.size());
   }
 
   sensor_msgs::PointCloud2 cloud;

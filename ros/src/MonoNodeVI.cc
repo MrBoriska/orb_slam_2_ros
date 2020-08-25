@@ -29,11 +29,12 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
   Init();
 
   std::string name_of_node = ros::this_node::getName();
+
+  // additional VI settings
   std::string settings_file;
   nh.param<std::string>(name_of_node + "/addl_settings_file", settings_file, "file_not_set");
   //ORB_SLAM2::ConfigParam config(settings_file.c_str());
   ORB_SLAM2::ConfigParam* pParams = new ORB_SLAM2::ConfigParam(settings_file.c_str());
-
   orb_slam_->SetConfigParam(pParams);
 
 
@@ -55,7 +56,7 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
   ORBVIO::MsgSynchronizer msgsync(imageMsgDelaySec);
   /// Step 2: Subscribing the image and imu topics, as well as recalling the response function to record data
   ros::Subscriber imagesub = nh.subscribe("/camera/image_raw", 3, &ORBVIO::MsgSynchronizer::imageCallback, &msgsync);
-  ros::Subscriber imusub = nh.subscribe("/imu", 300, &ORBVIO::MsgSynchronizer::imuCallback, &msgsync);
+  ros::Subscriber imusub = nh.subscribe("/imu", 150, &ORBVIO::MsgSynchronizer::imuCallback, &msgsync);
 
   SensorMsgImagePtr imageMsg;
   std::vector<SensorMsgImuPtr> vimuMsg;
@@ -65,7 +66,7 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
   //const bool bAccMultiply98 = config.GetAccMultiply9p8();     // default: 0
   //const bool bAccMultiply98 = pParams->GetAccMultiply9p8();     // default: 0
 
-  ros::Rate r(400);
+  ros::Rate r(30);
   int nImages = 0;    // image number
   while(ros::ok())
   {
@@ -95,14 +96,8 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
         vimuData.push_back( imudata );
       }
 
-      double tframe = imageMsg->header.stamp.toSec();
-
-      std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
       /// grab image and track
       GrabImage(imageMsg, vimuData);
-
-      std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-      double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count() * 1000; // ms
     }
 
     ros::spinOnce();
@@ -113,7 +108,7 @@ MonoNode::MonoNode (ORB_SLAM2::System::eSensor sensor, ros::NodeHandle &nh, imag
   //orb_slam_->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 
   // Save NavState trajectory (IMU)
-  orb_slam_->SaveKeyFrameTrajectoryNavState("KeyFrameNavStateTrajectory.txt");
+  //orb_slam_->SaveKeyFrameTrajectoryNavState("KeyFrameNavStateTrajectory.txt");
 
   // Stop all threads
   //orb_slam_->Shutdown();
@@ -145,5 +140,4 @@ void MonoNode::GrabImage(const sensor_msgs::ImageConstPtr& msg, const std::vecto
     orb_slam_->TrackMonoVI(cv_ptr->image, vimuData, cv_ptr->header.stamp.toSec());
     
     Update();
-
 }
